@@ -17,8 +17,8 @@ permissions:
 jobs:
   test-and-merge:
     runs-on: ubuntu-latest
-    # For pull_request events, only run for dependabot PRs. For workflow_dispatch, always run.
-    if: github.event_name == 'workflow_dispatch' || github.event.pull_request.user.login == 'dependabot[bot]'
+    # For pull_request events, only run for dependabot PRs from the same repo. For workflow_dispatch, always run.
+    if: github.event_name == 'workflow_dispatch' || (github.event.pull_request.user.login == 'dependabot[bot]' && github.event.pull_request.head.repo.full_name == github.repository)
 
     steps:
       - name: Get PR info
