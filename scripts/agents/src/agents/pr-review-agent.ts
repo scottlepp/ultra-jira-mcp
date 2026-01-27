@@ -9,9 +9,6 @@ import {
   ReviewSuggestion,
   ValidationResult,
 } from './types.js';
-import { createFileTools } from '../tools/file-tools.js';
-import { createGitTools } from '../tools/git-tools.js';
-import { createTestTools } from '../tools/test-tools.js';
 import { createGitHubTools } from '../tools/github-tools.js';
 import { getConfig } from '../config.js';
 
@@ -38,24 +35,12 @@ export class PRReviewAgent extends BaseAgent<PRReviewAgentInput, PRReviewAgentOu
   }
 
   getTools(context: AgentContext): ToolSet {
-    // For security when reviewing fork PRs, we use API-only tools
-    // File/git/test tools require local checkout and are optional
+    // Only provide createReview tool - files are pre-fetched and passed as input
     const githubTools = createGitHubTools(context.repoOwner, context.repoName);
 
-    // Only include local tools if we have a working directory checked out
-    const hasLocalCheckout = context.workingDir && context.workingDir !== process.cwd();
-
-    if (hasLocalCheckout) {
-      return {
-        ...createFileTools(context.workingDir),
-        ...createGitTools(context.workingDir),
-        ...createTestTools(context.workingDir),
-        ...githubTools,
-      };
-    }
-
-    // API-only mode (safe for fork PRs)
-    return githubTools;
+    return {
+      createReview: githubTools.createReview,
+    };
   }
 
   getSystemPrompt(input: PRReviewAgentInput, context: AgentContext): string {
@@ -63,21 +48,16 @@ export class PRReviewAgent extends BaseAgent<PRReviewAgentInput, PRReviewAgentOu
 
     return `You are a code review AI agent. Your job is to review pull requests, provide helpful feedback, and ensure code quality.
 
+You have been provided with the complete PR diff showing all changes.
+
 Your workflow:
-1. Get PR details using getPullRequest - this returns headSha (the commit SHA)
-2. Get list of changed files using getPullRequestFiles (includes diffs/patches)
-3. For each important changed file, use getFileContents with headSha as the ref parameter to read the full file
-4. Analyze both the full file contents AND the diffs (patches)
-5. ${input.suggestTests ? 'Check test coverage if local tools available, otherwise suggest tests based on file patterns' : 'Note any missing tests'}
-6. Analyze code for issues in: ${focusAreasStr}
-7. Submit a review with your findings using createReview WITH inline comments
+1. Review the diff to understand what changed
+2. Analyze code for issues in: ${focusAreasStr}
+3. ${input.suggestTests ? 'Suggest test files for untested code' : 'Note any missing tests'}
+4. Submit a review using createReview WITH inline comments
 
-CRITICAL: When calling getFileContents, you MUST use the headSha commit SHA from getPullRequest as the ref parameter.
-NEVER use the branch name as ref - branches can be deleted after PRs are merged.
-Example: getFileContents({ path: "...", ref: pr.headSha })
-
-IMPORTANT: Use GitHub API tools (getFileContents, getPullRequestFiles) to read code.
-These work without a local checkout and are safe for reviewing all PRs including forks.
+IMPORTANT: The diff has been provided for you. You do NOT need to call any tools to read files.
+Just analyze the diff and submit your review using the createReview tool.
 
 INLINE COMMENTS:
 When you find specific issues in the code, create inline comments using the comments array in createReview:
@@ -132,22 +112,26 @@ Repository: ${context.repoOwner}/${context.repoName}`;
 Focus areas: ${input.focusAreas?.join(', ') || 'all areas'}
 Suggest tests: ${input.suggestTests !== false ? 'yes' : 'no'}
 
-Steps:
-1. Use getPullRequest to get the PR details - it returns headSha (commit SHA)
-2. Use getPullRequestFiles to get the list of changed files and their diffs (patches)
-3. For each important changed file, use getFileContents with the headSha as the ref parameter to read the full file
-4. Analyze the changes in the patches (diffs) for:
+PR Diff:
+\`\`\`diff
+${input.diff || 'No diff provided'}
+\`\`\`
+
+---
+
+Instructions:
+1. Analyze each file's changes for:
    - Security issues (injection, XSS, auth bypass, etc.)
    - Logic errors and edge cases
    - Missing error handling
    - Performance concerns
    - Code quality and style
-5. ${input.suggestTests !== false ? 'Suggest test files based on the changed files (e.g., src/foo.ts should have tests/foo.test.ts)' : 'Note any missing test coverage'}
-6. For EACH specific issue you find, note:
+2. ${input.suggestTests !== false ? 'Suggest test files based on the changed files (e.g., src/foo.ts should have tests/foo.test.ts)' : 'Note any missing test coverage'}
+3. For EACH specific issue you find, note:
    - The file path
    - The line number in the DIFF where the issue occurs
    - What the issue is and how to fix it
-7. Use createReview to submit your review with:
+4. Use createReview to submit your review with:
    - body: Overall summary of your findings
    - event: APPROVE (no issues), REQUEST_CHANGES (critical/high issues), or COMMENT (minor suggestions)
    - comments: Array of inline comments for each specific issue found
@@ -188,6 +172,15 @@ Use GitHub API tools for file access - they work without local checkout.`;
         input,
         reviewContext
       );
+
+      // Log the agent's response
+      this.log('info', 'Agent response received', {
+        textLength: text.length,
+        toolCallsCount: toolCalls.length,
+        proposedChangesCount: proposedChanges.length,
+      });
+      this.log('info', 'Agent text response', { text });
+      this.log('info', 'Tool calls made', { toolCalls });
 
       // Extract results from the review
       const issues: ReviewIssue[] = [];
@@ -349,6 +342,17 @@ if (import.meta.url === `file://${process.argv[1]}`) {
     process.exit(1);
   }
 
+  const prDiffFile = process.env.PR_DIFF_FILE;
+
+  if (!prDiffFile) {
+    console.error('PR_DIFF_FILE environment variable is required');
+    process.exit(1);
+  }
+
+  // Read PR diff
+  const fs = await import('fs/promises');
+  const diff = await fs.readFile(prDiffFile, 'utf-8');
+
   const agent = new PRReviewAgent();
   const context: AgentContext = {
     workingDir: process.cwd(),
@@ -361,6 +365,7 @@ if (import.meta.url === `file://${process.argv[1]}`) {
     prNumber,
     suggestTests: true,
     focusAreas: ['security', 'logic', 'tests'],
+    diff,
   };
 
   agent.execute(input, context).then((result) => {

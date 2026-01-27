@@ -178,6 +178,8 @@ export interface PRReviewAgentInput {
   focusAreas?: ('security' | 'performance' | 'style' | 'logic' | 'tests')[];
   /** Whether to suggest tests */
   suggestTests?: boolean;
+  /** The full PR diff/patch as text */
+  diff?: string;
 }
 
 /**
