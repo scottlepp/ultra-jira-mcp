@@ -34,11 +34,11 @@ jobs:
     if: github.actor != 'github-actions[bot]' && github.actor != 'dependabot[bot]'
 
     steps:
-      - name: Checkout main branch only (SAFE - never executes PR code)
+      - name: Checkout PR code (safe - we only review, never execute)
         uses: actions/checkout@v6
         with:
-          ref: main
-          fetch-depth: 1
+          ref: refs/pull/${{ github.event.pull_request.number }}/head
+          fetch-depth: 0
 
       - name: Setup Node.js
         uses: actions/setup-node@v6
@@ -46,11 +46,20 @@ jobs:
           node-version: '22'
           cache: 'npm'
 
-      - name: Install main dependencies
+      - name: Get package files from main for safe dependency installation
+        run: |
+          git fetch origin main
+          git checkout origin/main -- package.json package-lock.json scripts/agents/package.json scripts/agents/package-lock.json
+
+      - name: Install dependencies (from main branch)
         run: npm ci
 
-      - name: Install agent dependencies
+      - name: Install agent dependencies (from main branch)
         run: cd scripts/agents && npm ci
+
+      - name: Restore PR code
+        run: |
+          git checkout HEAD -- .
 
       - name: Determine PR Number
         id: pr-number
@@ -72,6 +81,13 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Generate PR diff
+        if: steps.pr-state.outputs.state == 'OPEN'
+        id: pr-diff
+        run: |
+          # Generate diff between base and current HEAD
+          git diff origin/${{ github.event.pull_request.base.ref || 'main' }}...HEAD > pr-diff.patch
+
       - name: Run PR Review Agent
         if: steps.pr-state.outputs.state == 'OPEN'
         id: pr-review-agent
@@ -80,6 +96,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITHUB_REPOSITORY: ${{ github.repository }}
           PR_NUMBER: ${{ steps.pr-number.outputs.pr_number }}
+          PR_DIFF_FILE: pr-diff.patch
           FOCUS_AREAS: ${{ inputs.focus_areas || 'security,logic,tests' }}
           SUGGEST_TESTS: ${{ inputs.suggest_tests || 'true' }}
           # AI Provider API Keys - At least one required, router will use all available
