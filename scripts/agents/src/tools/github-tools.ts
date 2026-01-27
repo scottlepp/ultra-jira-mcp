@@ -305,6 +305,53 @@ export function createGitHubTools(repoOwner: string, repoName: string) {
     }),
 
     /**
+     * Get file contents from repository via API
+     */
+    getFileContents: tool({
+      description: 'Get the contents of a file from the repository via GitHub API (works without local checkout)',
+      inputSchema: z.object({
+        path: z.string().describe('Path to the file in the repository'),
+        ref: z.string().optional().describe('Branch, tag, or commit SHA (defaults to default branch)'),
+      }),
+      execute: async ({ path, ref }: { path: string; ref?: string }) => {
+        try {
+          const { data } = await octokit.repos.getContent({
+            owner: repoOwner,
+            repo: repoName,
+            path,
+            ref,
+          });
+
+          // Check if it's a file (not a directory or symlink)
+          if (!('content' in data) || Array.isArray(data)) {
+            return {
+              success: false,
+              error: `Path ${path} is not a file`,
+              path,
+            };
+          }
+
+          // Decode base64 content
+          const content = Buffer.from(data.content, 'base64').toString('utf-8');
+
+          return {
+            success: true,
+            content,
+            path,
+            sha: data.sha,
+            size: data.size,
+          };
+        } catch (error) {
+          return {
+            success: false,
+            error: `Failed to get file contents: ${error instanceof Error ? error.message : 'Unknown error'}`,
+            path,
+          };
+        }
+      },
+    }),
+
+    /**
      * Close an issue
      */
     closeIssue: tool({

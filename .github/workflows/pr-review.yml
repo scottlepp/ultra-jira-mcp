@@ -1,7 +1,7 @@
 name: PR Review Agent
 
 on:
-  pull_request:
+  pull_request_target:
     types: [opened, synchronize, reopened]
   workflow_dispatch:
     inputs:
@@ -26,14 +26,16 @@ jobs:
   review-pr:
     runs-on: ubuntu-latest
     environment: jira-mcp
-    # Don't review PRs created by bots (no secrets access for dependabot)
+    # Review all PRs including forks! Uses API-only mode (no PR code execution)
+    # This is safe because we only checkout main branch and use GitHub API to read PR files
     if: github.actor != 'github-actions[bot]' && github.actor != 'dependabot[bot]'
 
     steps:
-      - name: Checkout repository
+      - name: Checkout main branch only (SAFE - never executes PR code)
         uses: actions/checkout@v6
         with:
-          fetch-depth: 0
+          ref: main
+          fetch-depth: 1
 
       - name: Setup Node.js
         uses: actions/setup-node@v6

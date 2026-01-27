@@ -38,12 +38,24 @@ export class PRReviewAgent extends BaseAgent<PRReviewAgentInput, PRReviewAgentOu
   }
 
   getTools(context: AgentContext): ToolSet {
-    return {
-      ...createFileTools(context.workingDir),
-      ...createGitTools(context.workingDir),
-      ...createTestTools(context.workingDir),
-      ...createGitHubTools(context.repoOwner, context.repoName),
-    };
+    // For security when reviewing fork PRs, we use API-only tools
+    // File/git/test tools require local checkout and are optional
+    const githubTools = createGitHubTools(context.repoOwner, context.repoName);
+
+    // Only include local tools if we have a working directory checked out
+    const hasLocalCheckout = context.workingDir && context.workingDir !== process.cwd();
+
+    if (hasLocalCheckout) {
+      return {
+        ...createFileTools(context.workingDir),
+        ...createGitTools(context.workingDir),
+        ...createTestTools(context.workingDir),
+        ...githubTools,
+      };
+    }
+
+    // API-only mode (safe for fork PRs)
+    return githubTools;
   }
 
   getSystemPrompt(input: PRReviewAgentInput, context: AgentContext): string {
@@ -52,12 +64,15 @@ export class PRReviewAgent extends BaseAgent<PRReviewAgentInput, PRReviewAgentOu
     return `You are a code review AI agent. Your job is to review pull requests, provide helpful feedback, and ensure code quality.
 
 Your workflow:
-1. Get PR details and list of changed files
-2. Read the changed files and their diffs
-3. Check test coverage for changed source files
-4. Analyze code for issues in: ${focusAreasStr}
-5. ${input.suggestTests ? 'Generate test suggestions for untested code' : 'Note any missing tests'}
-6. Submit a review with your findings
+1. Get PR details and list of changed files using getPullRequest and getPullRequestFiles
+2. For each changed file, use getFileContents to read the full file (pass the PR's head SHA as ref)
+3. Analyze the diffs (patches) provided by getPullRequestFiles
+4. ${input.suggestTests ? 'Check test coverage if local tools available, otherwise suggest tests based on file patterns' : 'Note any missing tests'}
+5. Analyze code for issues in: ${focusAreasStr}
+6. Submit a review with your findings using createReview
+
+IMPORTANT: Use GitHub API tools (getFileContents, getPullRequestFiles) to read code.
+These work without a local checkout and are safe for reviewing all PRs including forks.
 
 REVIEW GUIDELINES:
 - Be constructive, not harsh
@@ -94,18 +109,20 @@ Focus areas: ${input.focusAreas?.join(', ') || 'all areas'}
 Suggest tests: ${input.suggestTests !== false ? 'yes' : 'no'}
 
 Steps:
-1. Get the PR details and list of changed files
-2. Read each changed file to understand the changes
-3. Check if changed source files have test coverage
-4. Analyze the code for:
-   - Security issues
-   - Logic errors
+1. Use getPullRequest to get the PR details including the head SHA
+2. Use getPullRequestFiles to get the list of changed files and their diffs (patches)
+3. For each important changed file, use getFileContents with the PR's head SHA to read the full file
+4. Analyze the changes in the patches (diffs) for:
+   - Security issues (injection, XSS, auth bypass, etc.)
+   - Logic errors and edge cases
    - Missing error handling
    - Performance concerns
-   - Code quality
-5. ${input.suggestTests !== false ? 'Generate test suggestions for any untested code' : 'Note any missing test coverage'}
-6. Compile your findings into a review
-7. Submit the review with an appropriate verdict (APPROVE, REQUEST_CHANGES, or COMMENT)`;
+   - Code quality and style
+5. ${input.suggestTests !== false ? 'Suggest test files based on the changed files (e.g., src/foo.ts should have tests/foo.test.ts)' : 'Note any missing test coverage'}
+6. Compile your findings into a comprehensive review
+7. Use createReview to submit with verdict: APPROVE (no issues), REQUEST_CHANGES (critical/high issues), or COMMENT (minor suggestions)
+
+Use GitHub API tools for file access - they work without local checkout.`;
   }
 
   async execute(
