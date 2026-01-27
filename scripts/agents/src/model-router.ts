@@ -39,17 +39,17 @@ export class ModelRouter {
   private initializeProviders(): void {
     const config = getConfig();
 
-    // Priority order: faster/cheaper models first, more capable as fallback
+    // Priority order: best for code first, then speed/cost optimized
     const providerConfigs: ModelProvider[] = [
-      // 1. Google Gemini Flash - Fast and has good free tier
+      // 1. DeepSeek Coder - Best for code review, trained specifically for code
       {
-        name: 'google-gemini',
+        name: 'deepseek',
         priority: 1,
         createModel: () => {
-          if (!config.googleApiKey) return null;
+          if (!config.deepseekApiKey) return null;
           try {
-            const google = createGoogleGenerativeAI({ apiKey: config.googleApiKey });
-            return google('gemini-2.0-flash-exp');
+            const deepseek = createDeepSeek({ apiKey: config.deepseekApiKey });
+            return deepseek('deepseek-coder');
           } catch {
             return null;
           }
@@ -71,25 +71,49 @@ export class ModelRouter {
         },
       },
 
-      // 3. DeepSeek - Very affordable, good performance
+      // 3. Google Gemini Flash - Fast and has good free tier
       {
-        name: 'deepseek',
+        name: 'google-gemini',
         priority: 3,
         createModel: () => {
-          if (!config.deepseekApiKey) return null;
+          if (!config.googleApiKey) return null;
           try {
-            const deepseek = createDeepSeek({ apiKey: config.deepseekApiKey });
-            return deepseek('deepseek-chat');
+            const google = createGoogleGenerativeAI({ apiKey: config.googleApiKey });
+            return google('gemini-2.0-flash-exp');
           } catch {
             return null;
           }
         },
       },
 
-      // 4. OpenAI - Reliable but can be rate limited
+      // 4. OpenRouter - Access to 300+ models with internal fallback chain
+      {
+        name: 'openrouter',
+        priority: 4,
+        createModel: () => {
+          if (!config.openrouterApiKey) return null;
+          try {
+            const openrouter = createOpenRouter({ apiKey: config.openrouterApiKey });
+            // Primary: Qwen3 Coder (480B MoE), fallback to DeepSeek Coder, then Gemini
+            return openrouter('qwen/qwen3-coder:free', {
+              extraBody: {
+                models: [
+                  'qwen/qwen3-coder:free',           // Best free coding model
+                  'deepseek/deepseek-coder:free',    // Excellent code-specific model
+                  'google/gemini-2.0-flash-exp:free', // Fast general-purpose fallback
+                ],
+              },
+            });
+          } catch {
+            return null;
+          }
+        },
+      },
+
+      // 5. OpenAI - Reliable but can be rate limited
       {
         name: 'openai',
-        priority: 4,
+        priority: 5,
         createModel: () => {
           if (!config.openaiApiKey) return null;
           try {
@@ -101,10 +125,10 @@ export class ModelRouter {
         },
       },
 
-      // 5. Mistral AI - Good balance of speed and quality
+      // 6. Mistral AI - Good balance of speed and quality
       {
         name: 'mistral',
-        priority: 5,
+        priority: 6,
         createModel: () => {
           if (!config.mistralApiKey) return null;
           try {
@@ -116,31 +140,15 @@ export class ModelRouter {
         },
       },
 
-      // 6. Perplexity - Good for reasoning tasks
+      // 7. Perplexity - Good for reasoning tasks
       {
         name: 'perplexity',
-        priority: 6,
+        priority: 7,
         createModel: () => {
           if (!config.perplexityApiKey) return null;
           try {
             const perplexity = createPerplexity({ apiKey: config.perplexityApiKey });
             return perplexity('llama-3.1-sonar-small-128k-online');
-          } catch {
-            return null;
-          }
-        },
-      },
-
-      // 7. OpenRouter - Access to 300+ models through one API
-      {
-        name: 'openrouter',
-        priority: 7,
-        createModel: () => {
-          if (!config.openrouterApiKey) return null;
-          try {
-            const openrouter = createOpenRouter({ apiKey: config.openrouterApiKey });
-            // Use a free model on OpenRouter
-            return openrouter('google/gemini-2.0-flash-exp:free');
           } catch {
             return null;
           }

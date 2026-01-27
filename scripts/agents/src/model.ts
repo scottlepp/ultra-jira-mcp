@@ -11,13 +11,13 @@ const DEFAULT_MODEL_ID = 'gemini-flash-latest';
  * Uses Vercel AI SDK for unified multi-provider abstraction
  *
  * Will automatically try multiple providers in order:
- * 1. Google Gemini (fast, good free tier)
+ * 1. DeepSeek Coder (best for code review)
  * 2. Groq (very fast, generous free tier)
- * 3. DeepSeek (affordable)
- * 4. OpenAI (reliable)
- * 5. Mistral (balanced)
- * 6. Perplexity (reasoning)
- * 7. OpenRouter (access to many models)
+ * 3. Google Gemini (fast, good free tier)
+ * 4. OpenRouter (access to many models)
+ * 5. OpenAI (reliable)
+ * 6. Mistral (balanced)
+ * 7. Perplexity (reasoning)
  * 8. Anthropic Claude (high quality)
  */
 export function getModel(): LanguageModel {
