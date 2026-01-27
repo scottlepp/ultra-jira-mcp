@@ -72,22 +72,23 @@ export class ModelRouter {
       // },
 
       // 3. DeepSeek - Very affordable, good performance
-      {
-        name: 'deepseek',
-        priority: 3,
-        createModel: () => {
-          if (!config.deepseekApiKey) return null;
-          try {
-            const deepseek = createOpenAI({
-              apiKey: config.deepseekApiKey,
-              baseURL: 'https://api.deepseek.com',
-            });
-            return deepseek('deepseek-chat');
-          } catch {
-            return null;
-          }
-        },
-      },
+      // NOTE: Disabled - DeepSeek uses OpenAI-compatible API with spec v1, AI SDK v6 requires v2
+      // {
+      //   name: 'deepseek',
+      //   priority: 3,
+      //   createModel: () => {
+      //     if (!config.deepseekApiKey) return null;
+      //     try {
+      //       const deepseek = createOpenAI({
+      //         apiKey: config.deepseekApiKey,
+      //         baseURL: 'https://api.deepseek.com',
+      //       });
+      //       return deepseek('deepseek-chat');
+      //     } catch {
+      //       return null;
+      //     }
+      //   },
+      // },
 
       // 4. OpenAI - Reliable but can be rate limited
       {
@@ -120,41 +121,43 @@ export class ModelRouter {
       },
 
       // 6. Perplexity - Good for reasoning tasks
-      {
-        name: 'perplexity',
-        priority: 6,
-        createModel: () => {
-          if (!config.perplexityApiKey) return null;
-          try {
-            const perplexity = createOpenAI({
-              apiKey: config.perplexityApiKey,
-              baseURL: 'https://api.perplexity.ai',
-            });
-            return perplexity('llama-3.1-sonar-small-128k-online');
-          } catch {
-            return null;
-          }
-        },
-      },
+      // NOTE: Disabled - Perplexity uses OpenAI-compatible API with spec v1, AI SDK v6 requires v2
+      // {
+      //   name: 'perplexity',
+      //   priority: 6,
+      //   createModel: () => {
+      //     if (!config.perplexityApiKey) return null;
+      //     try {
+      //       const perplexity = createOpenAI({
+      //         apiKey: config.perplexityApiKey,
+      //         baseURL: 'https://api.perplexity.ai',
+      //       });
+      //       return perplexity('llama-3.1-sonar-small-128k-online');
+      //     } catch {
+      //       return null;
+      //     }
+      //   },
+      // },
 
       // 7. OpenRouter - Access to many models through one API
-      {
-        name: 'openrouter',
-        priority: 7,
-        createModel: () => {
-          if (!config.openrouterApiKey) return null;
-          try {
-            const openrouter = createOpenAI({
-              apiKey: config.openrouterApiKey,
-              baseURL: 'https://openrouter.ai/api/v1',
-            });
-            // Use a free/affordable model on OpenRouter
-            return openrouter('google/gemini-2.0-flash-exp:free');
-          } catch {
-            return null;
-          }
-        },
-      },
+      // NOTE: Disabled - OpenRouter uses OpenAI-compatible API with spec v1, AI SDK v6 requires v2
+      // {
+      //   name: 'openrouter',
+      //   priority: 7,
+      //   createModel: () => {
+      //     if (!config.openrouterApiKey) return null;
+      //     try {
+      //       const openrouter = createOpenAI({
+      //         apiKey: config.openrouterApiKey,
+      //         baseURL: 'https://openrouter.ai/api/v1',
+      //       });
+      //       // Use a free/affordable model on OpenRouter
+      //       return openrouter('google/gemini-2.0-flash-exp:free');
+      //     } catch {
+      //       return null;
+      //     }
+      //   },
+      // },
 
       // 8. Anthropic Claude - High quality fallback
       {
