@@ -6,6 +6,7 @@ import { createOpenAI } from '@ai-sdk/openai';
 import { createMistral } from '@ai-sdk/mistral';
 import { createPerplexity } from '@ai-sdk/perplexity';
 import { createAnthropic } from '@ai-sdk/anthropic';
+import { createOpenRouter } from '@openrouter/ai-sdk-provider';
 import { getConfig } from './config.js';
 
 export interface ModelProvider {
@@ -130,25 +131,21 @@ export class ModelRouter {
         },
       },
 
-      // 7. OpenRouter - Access to many models through one API
-      // NOTE: Disabled - OpenRouter uses OpenAI-compatible API with spec v1, AI SDK v6 requires v2
-      // {
-      //   name: 'openrouter',
-      //   priority: 7,
-      //   createModel: () => {
-      //     if (!config.openrouterApiKey) return null;
-      //     try {
-      //       const openrouter = createOpenAI({
-      //         apiKey: config.openrouterApiKey,
-      //         baseURL: 'https://openrouter.ai/api/v1',
-      //       });
-      //       // Use a free/affordable model on OpenRouter
-      //       return openrouter('google/gemini-2.0-flash-exp:free');
-      //     } catch {
-      //       return null;
-      //     }
-      //   },
-      // },
+      // 7. OpenRouter - Access to 300+ models through one API
+      {
+        name: 'openrouter',
+        priority: 7,
+        createModel: () => {
+          if (!config.openrouterApiKey) return null;
+          try {
+            const openrouter = createOpenRouter({ apiKey: config.openrouterApiKey });
+            // Use a free model on OpenRouter
+            return openrouter('google/gemini-2.0-flash-exp:free');
+          } catch {
+            return null;
+          }
+        },
+      },
 
       // 8. Anthropic Claude - High quality fallback
       {

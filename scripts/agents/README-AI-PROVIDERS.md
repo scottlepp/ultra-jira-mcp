@@ -82,9 +82,8 @@ The router tries providers in this order (fastest/cheapest first):
 4. OpenAI (gpt-4o-mini)
 5. Mistral (mistral-small-latest)
 6. Perplexity (llama-3.1-sonar-small-128k-online) ✅ FREE
-7. Anthropic Claude (claude-3-haiku-20240307)
-
-**Note**: OpenRouter is not currently supported (requires AI SDK v5, we use v6)
+7. OpenRouter (google/gemini-2.0-flash-exp:free) ✅ FREE
+8. Anthropic Claude (claude-3-haiku-20240307)
 
 ### Automatic Fallback
 
@@ -98,14 +97,17 @@ The router automatically switches to the next available provider and retries. It
 
 ### Example Flow
 
-If you have 5 providers configured (Google, Groq, DeepSeek, OpenRouter, Mistral):
+If you have 8 providers configured (Google, Groq, DeepSeek, OpenAI, Mistral, Perplexity, OpenRouter, Anthropic):
 
 ```
 1. Try Google Gemini → Rate limit hit
 2. Switch to Groq → Rate limit hit
 3. Switch to DeepSeek → Rate limit hit
-4. Switch to OpenRouter → Rate limit hit
-5. Switch to Mistral → Success! ✓
+4. Switch to OpenAI → Rate limit hit
+5. Switch to Mistral → Rate limit hit
+6. Switch to Perplexity → Rate limit hit
+7. Switch to OpenRouter → Rate limit hit
+8. Switch to Anthropic → Success! ✓
 ```
 
 The system will try **every configured provider** before giving up, maximizing your chances of success.
