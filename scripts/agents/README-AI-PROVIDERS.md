@@ -77,13 +77,14 @@ Add the same API keys as GitHub repository secrets:
 The router tries providers in this order (fastest/cheapest first):
 
 1. Google Gemini Flash (gemini-2.0-flash-exp)
-2. Groq (llama-3.3-70b-versatile)
-3. DeepSeek (deepseek-chat)
+2. Groq (llama-3.3-70b-versatile) ✅ FREE
+3. DeepSeek (deepseek-chat) ✅ FREE
 4. OpenAI (gpt-4o-mini)
 5. Mistral (mistral-small-latest)
-6. Perplexity (llama-3.1-sonar-small-128k-online)
-7. OpenRouter (google/gemini-2.0-flash-exp:free)
-8. Anthropic Claude (claude-3-haiku-20240307)
+6. Perplexity (llama-3.1-sonar-small-128k-online) ✅ FREE
+7. Anthropic Claude (claude-3-haiku-20240307)
+
+**Note**: OpenRouter is not currently supported (requires AI SDK v5, we use v6)
 
 ### Automatic Fallback
 
@@ -193,11 +194,18 @@ If you see repeated rate limit errors across all providers:
 
 ### Recommended Setup for Free Usage
 
-1. Start with: `GOOGLE_API_KEY` + `GROQ_API_KEY` + `OPENROUTER_API_KEY`
-2. Add more as needed: `DEEPSEEK_API_KEY`, `OPENAI_API_KEY`
-3. Keep Anthropic as a premium fallback: `ANTHROPIC_API_KEY`
+**Best Setup** (all free providers):
+1. `GOOGLE_API_KEY` - Fast and generous free tier
+2. `GROQ_API_KEY` - Very fast inference, generous free tier
+3. `DEEPSEEK_API_KEY` - Affordable, essentially free for small usage
+4. `PERPLEXITY_API_KEY` - Free tier available
 
-This gives you multiple free options before hitting paid providers. OpenRouter is especially useful as it provides access to many models through one API.
+**Paid Fallbacks** (optional):
+- `OPENAI_API_KEY` - Reliable (limited free tier)
+- `MISTRAL_API_KEY` - Good balance (limited free tier)
+- `ANTHROPIC_API_KEY` - High quality (pay-as-you-go)
+
+With all free providers configured, you get 4 automatic fallback attempts before needing paid providers!
 
 ## Advanced Configuration
 
