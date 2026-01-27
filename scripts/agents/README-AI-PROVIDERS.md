@@ -15,7 +15,7 @@ All providers listed below have free or unpaid tiers:
 7. **OpenRouter** (Recommended) - Unified API for 200+ models, many with free tier
 8. **Anthropic Claude** - High quality fallback
 
-**Why OpenRouter?** OpenRouter is particularly useful because it provides access to 200+ AI models through a single API key, including many with free tiers (marked with `:free`). This means you get access to models from Google, Meta, Anthropic, and others without needing separate API keys for each.
+**Why OpenRouter?** OpenRouter is particularly useful because it provides access to 300+ AI models through a single API key, including many with free tiers (marked with `:free`). This means you get access to models from Google, Meta, DeepSeek, and others without needing separate API keys for each. Plus, OpenRouter supports internal model fallback, so if one free model is rate-limited, it automatically tries the next one in your fallback chain.
 
 ## Setup
 
@@ -74,16 +74,19 @@ Add the same API keys as GitHub repository secrets:
 
 ### Priority Order
 
-The router tries providers in this order (fastest/cheapest first):
+The router tries providers in this order (best for code first):
 
-1. Google Gemini Flash (gemini-2.0-flash-exp)
-2. Groq (llama-3.3-70b-versatile)
-3. DeepSeek (deepseek-chat)
-4. OpenAI (gpt-4o-mini)
-5. Mistral (mistral-small-latest)
-6. Perplexity (llama-3.1-sonar-small-128k-online)
-7. OpenRouter (google/gemini-2.0-flash-exp:free)
-8. Anthropic Claude (claude-3-haiku-20240307)
+1. **DeepSeek Coder** (`deepseek-coder`) ✅ FREE - Best for code review
+2. **Groq** (`llama-3.3-70b-versatile`) ✅ FREE - Fastest inference
+3. **Google Gemini Flash** (`gemini-2.0-flash-exp`) ✅ FREE - Fast and versatile
+4. **OpenRouter** (with internal fallback) ✅ FREE - Access to multiple models:
+   - Primary: `qwen/qwen3-coder:free` (480B MoE coding model)
+   - Fallback 1: `deepseek/deepseek-coder:free` (excellent for code)
+   - Fallback 2: `google/gemini-2.0-flash-exp:free` (fast general-purpose)
+5. **OpenAI** (`gpt-4o-mini`) - Limited free tier
+6. **Mistral** (`mistral-small-latest`) - Limited free tier
+7. **Perplexity** (`llama-3.1-sonar-small-128k-online`) ✅ FREE - Good for reasoning
+8. **Anthropic Claude** (`claude-3-haiku-20240307`) - Pay-as-you-go
 
 ### Automatic Fallback
 
@@ -97,17 +100,24 @@ The router automatically switches to the next available provider and retries. It
 
 ### Example Flow
 
-If you have 5 providers configured (Google, Groq, DeepSeek, OpenRouter, Mistral):
+If you have 8 providers configured (DeepSeek, Groq, Google, OpenRouter, OpenAI, Mistral, Perplexity, Anthropic):
 
 ```
-1. Try Google Gemini → Rate limit hit
-2. Switch to Groq → Rate limit hit
-3. Switch to DeepSeek → Rate limit hit
-4. Switch to OpenRouter → Rate limit hit
-5. Switch to Mistral → Success! ✓
+1. Try DeepSeek Coder (direct API) → Rate limit hit
+2. Switch to Groq (direct API) → Rate limit hit
+3. Switch to Google Gemini (direct API) → Rate limit hit
+4. Switch to OpenRouter → Tries internal fallback chain:
+   a. Try Qwen 3 Coder → Rate limit hit
+   b. Try DeepSeek Coder → Rate limit hit
+   c. Try Gemini Flash → Rate limit hit
+   → All OpenRouter models failed
+5. Switch to OpenAI → Rate limit hit
+6. Switch to Mistral → Rate limit hit
+7. Switch to Perplexity → Rate limit hit
+8. Switch to Anthropic → Success! ✓
 ```
 
-The system will try **every configured provider** before giving up, maximizing your chances of success.
+With OpenRouter's internal fallback, you effectively get **11 model attempts** (3 direct APIs + 3 OpenRouter models + 5 other providers) before giving up, maximizing your chances of success.
 
 ## Installation
 
@@ -193,11 +203,22 @@ If you see repeated rate limit errors across all providers:
 
 ### Recommended Setup for Free Usage
 
-1. Start with: `GOOGLE_API_KEY` + `GROQ_API_KEY` + `OPENROUTER_API_KEY`
-2. Add more as needed: `DEEPSEEK_API_KEY`, `OPENAI_API_KEY`
-3. Keep Anthropic as a premium fallback: `ANTHROPIC_API_KEY`
+**Minimal Setup** (best single provider):
+- `OPENROUTER_API_KEY` - Single key gives you access to 3 free coding models with automatic fallback
 
-This gives you multiple free options before hitting paid providers. OpenRouter is especially useful as it provides access to many models through one API.
+**Recommended Setup** (maximum free resilience):
+1. `DEEPSEEK_API_KEY` - Best for code review (direct API is faster than OpenRouter)
+2. `GROQ_API_KEY` - Very fast inference, generous free tier
+3. `GOOGLE_API_KEY` - Fast and generous free tier
+4. `OPENROUTER_API_KEY` - Provides 3 additional free model fallbacks (Qwen Coder, DeepSeek Coder, Gemini)
+5. `PERPLEXITY_API_KEY` - Free tier available
+
+**Paid Fallbacks** (optional):
+- `OPENAI_API_KEY` - Reliable (limited free tier)
+- `MISTRAL_API_KEY` - Good balance (limited free tier)
+- `ANTHROPIC_API_KEY` - High quality (pay-as-you-go)
+
+With the recommended free setup, you get **7 free model attempts** (DeepSeek direct, Groq, Google direct, 3 OpenRouter models, Perplexity) before needing paid providers!
 
 ## Advanced Configuration
 
@@ -209,6 +230,17 @@ Edit [model-router.ts](src/model-router.ts) to change which models are used:
 // Change the model for a provider
 google('gemini-2.0-flash-exp')  // Change to 'gemini-pro' etc
 openai('gpt-4o-mini')           // Change to 'gpt-4' etc
+
+// Customize OpenRouter's fallback chain
+openrouter('qwen/qwen3-coder:free', {
+  extraBody: {
+    models: [
+      'qwen/qwen3-coder:free',
+      'deepseek/deepseek-coder:free',
+      'google/gemini-2.0-flash-exp:free',
+    ],
+  },
+})
 ```
 
 ### Change Priority Order
