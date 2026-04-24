@@ -15,6 +15,34 @@
 // not a round-trip converter. Panels become blockquotes, media becomes
 // a descriptive placeholder, etc. The full ADF tree is still available
 // via the sandbox ref for anything needing perfect fidelity.
+//
+// Input safety:
+//   - The ADF tree is always the output of `JSON.parse` on a Jira REST
+//     response, so it cannot contain reference cycles (JSON is a tree
+//     by grammar). The walker therefore has no cycle detection.
+//   - Depth, however, is bounded by `MAX_BLOCK_DEPTH` below. Even though
+//     real Jira content never approaches this limit, capping protects
+//     against a malicious or malformed ticket body from exhausting the
+//     stack.
+//   - Link hrefs are filtered through `safeHref()` so that `javascript:`,
+//     `data:`, and similar dangerous schemes never make it into the
+//     rendered markdown. Downstream consumers may render the markdown
+//     in an HTML context we don't control.
+
+const MAX_BLOCK_DEPTH = 32;
+
+// Allowed URL schemes for link marks. Anything else (including no
+// scheme at all, which could be a protocol-relative `//evil.example`)
+// causes the link to render as plain text — the user still sees the
+// link label, just without the href.
+const SAFE_LINK_PATTERN = /^(https?:|mailto:|ftp:|\/(?!\/)|#)/i;
+
+function safeHref(raw: unknown): string | null {
+  if (typeof raw !== "string") return null;
+  const trimmed = raw.trim();
+  if (trimmed.length === 0) return null;
+  return SAFE_LINK_PATTERN.test(trimmed) ? trimmed : null;
+}
 
 export interface AdfNode {
   type?: string;
@@ -31,7 +59,10 @@ export interface AdfMark {
 
 export function adfToMarkdown(doc: unknown): string {
   if (!doc || typeof doc !== "object") return "";
-  const blocks = renderBlocks((doc as AdfNode).content ?? [], { listDepth: 0 });
+  const blocks = renderBlocks((doc as AdfNode).content ?? [], {
+    listDepth: 0,
+    blockDepth: 0,
+  });
   return blocks.join("\n\n").trim();
 }
 
@@ -50,12 +81,15 @@ export function adfToPlainText(doc: unknown): string {
 
 interface RenderCtx {
   listDepth: number;
+  blockDepth: number;
 }
 
 function renderBlocks(nodes: AdfNode[], ctx: RenderCtx): string[] {
+  if (ctx.blockDepth >= MAX_BLOCK_DEPTH) return [];
+  const childCtx: RenderCtx = { ...ctx, blockDepth: ctx.blockDepth + 1 };
   const out: string[] = [];
   for (const node of nodes) {
-    const rendered = renderBlock(node, ctx);
+    const rendered = renderBlock(node, childCtx);
     if (rendered !== null && rendered !== "") out.push(rendered);
   }
   return out;
@@ -191,7 +225,10 @@ function renderTable(node: AdfNode): string {
 
 function renderCellContent(cell: AdfNode): string {
   if (cell.type !== "tableCell" && cell.type !== "tableHeader") return "";
-  const blocks = renderBlocks(cell.content ?? [], { listDepth: 0 });
+  const blocks = renderBlocks(cell.content ?? [], {
+    listDepth: 0,
+    blockDepth: 0,
+  });
   // Collapse multi-line cell content to a single line so the table
   // stays valid markdown. Pipes inside cells are escaped.
   return blocks
@@ -234,8 +271,7 @@ function renderInlineNode(node: AdfNode): string {
 
     case "inlineCard":
     case "blockCard": {
-      const url = typeof node.attrs?.url === "string" ? node.attrs.url : "";
-      return url;
+      return safeHref(node.attrs?.url) ?? "";
     }
 
     case "date": {
@@ -271,9 +307,14 @@ function applyMarks(text: string, marks: AdfMark[]): string {
       case "strike":
         out = `~~${out}~~`;
         break;
-      case "link":
-        if (typeof mark.attrs?.href === "string") href = mark.attrs.href;
+      case "link": {
+        // Only accept URLs on an allowlist of safe schemes. `javascript:`
+        // and `data:` URLs can produce XSS if our markdown is later
+        // rendered in a web context.
+        const safe = safeHref(mark.attrs?.href);
+        if (safe) href = safe;
         break;
+      }
       default:
         break;
     }

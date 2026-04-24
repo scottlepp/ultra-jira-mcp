@@ -77,6 +77,38 @@ describe("adfToMarkdown — marks", () => {
     );
     expect(adfToMarkdown(d)).toBe("[**click**](https://x.dev)");
   });
+
+  it.each([
+    ["javascript", "javascript:alert(1)"],
+    ["javascript with caps", "JavaScript:alert(1)"],
+    ["data url", "data:text/html,<script>"],
+    ["vbscript", "vbscript:msgbox(1)"],
+    ["file", "file:///etc/passwd"],
+    ["protocol-relative", "//evil.example/phish"],
+    ["leading whitespace before js", "   javascript:alert(1)"],
+  ])("drops link mark with unsafe href (%s) but keeps the label", (_label, href) => {
+    const d = doc(p(t("click me", [{ type: "link", attrs: { href } }])));
+    expect(adfToMarkdown(d)).toBe("click me");
+  });
+
+  it.each([
+    "https://example.com",
+    "http://example.com",
+    "mailto:alice@example.com",
+    "ftp://files.example.com",
+    "/relative/path",
+    "#anchor",
+  ])("accepts safe href: %s", (href) => {
+    const d = doc(p(t("click", [{ type: "link", attrs: { href } }])));
+    expect(adfToMarkdown(d)).toBe(`[click](${href})`);
+  });
+
+  it("drops unsafe inlineCard URLs", () => {
+    const d = doc(
+      p({ type: "inlineCard", attrs: { url: "javascript:alert(1)" } }),
+    );
+    expect(adfToMarkdown(d)).toBe("");
+  });
 });
 
 describe("adfToMarkdown — lists", () => {
@@ -291,5 +323,33 @@ describe("adfToPlainText", () => {
   it("leaves block structure (newlines) intact", () => {
     const d = doc(p(t("one")), p(t("two")));
     expect(adfToPlainText(d)).toBe("one\n\ntwo");
+  });
+});
+
+describe("adfToMarkdown — recursion safety", () => {
+  // Build a tree nested `depth` levels deep. Each level is an unknown
+  // block type wrapping one paragraph of leaf text plus the next level.
+  const nest = (depth: number): any => {
+    if (depth === 0) return p(t("leaf"));
+    return { type: "unknown-wrapper", content: [p(t(`L${depth}`)), nest(depth - 1)] };
+  };
+
+  it("handles a reasonably deep tree (10 levels) without issue", () => {
+    const d = doc(nest(10));
+    const md = adfToMarkdown(d);
+    expect(md).toContain("L10");
+    expect(md).toContain("leaf");
+  });
+
+  it("caps recursion at MAX_BLOCK_DEPTH and does not throw on a 2000-deep pathological tree", () => {
+    const d = doc(nest(2000));
+    expect(() => adfToMarkdown(d)).not.toThrow();
+    const md = adfToMarkdown(d);
+    // Top-level labels are rendered; deep labels are truncated away by
+    // the depth cap. Exactly which ones survive depends on the cap
+    // value, but the shallow ones must be present and the deepest must
+    // not be.
+    expect(md).toContain("L2000");
+    expect(md).not.toContain("L1500");
   });
 });
