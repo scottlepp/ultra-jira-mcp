@@ -34,6 +34,13 @@ describe("computeBackoffMs", () => {
     expect(computeBackoffMs(0, header, DEFAULT_RETRY, now)).toBe(7000);
   });
 
+  it("treats a past Retry-After date as 'retry immediately'", () => {
+    // Clock skew: server sent a date older than our current time.
+    const now = Date.parse("2026-01-01T00:00:10Z");
+    const header = "Thu, 01 Jan 2026 00:00:05 GMT";
+    expect(computeBackoffMs(0, header, DEFAULT_RETRY, now)).toBe(0);
+  });
+
   it("clamps Retry-After to maxDelayMs", () => {
     expect(
       computeBackoffMs(0, "9999", DEFAULT_RETRY),

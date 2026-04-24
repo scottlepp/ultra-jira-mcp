@@ -106,8 +106,11 @@ export function computeBackoffMs(
     }
     const asDate = Date.parse(retryAfterHeader);
     if (!Number.isNaN(asDate)) {
+      // A past Retry-After (clock skew, queued response) means "retry
+      // now" — return 0 rather than falling through to exponential
+      // backoff, which would impose a spurious delay.
       const diff = asDate - now;
-      if (diff > 0) return Math.min(diff, opts.maxDelayMs);
+      return diff > 0 ? Math.min(diff, opts.maxDelayMs) : 0;
     }
   }
   const exp = opts.baseDelayMs * Math.pow(2, attempt);

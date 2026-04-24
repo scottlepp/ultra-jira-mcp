@@ -71,12 +71,18 @@ export class JiraClient {
       return;
     }
 
-    // Prevent multiple parallel initializations
+    // Prevent multiple parallel initializations. On rejection, clear
+    // the promise so the next call can retry — otherwise a transient
+    // init failure (network blip, 5xx on tenant_info) would leave the
+    // client permanently broken.
     if (this.initPromise) {
       return this.initPromise;
     }
 
-    this.initPromise = this.fetchCloudId();
+    this.initPromise = this.fetchCloudId().catch((err) => {
+      this.initPromise = null;
+      throw err;
+    });
     return this.initPromise;
   }
 
