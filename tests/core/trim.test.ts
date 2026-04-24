@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 
 import {
-  adfToPlainText,
   attachmentSummary,
   commentSummary,
   issueSummary,
@@ -54,38 +53,6 @@ describe("userSummary", () => {
       emailAddress: "ada@example.com",
       active: true,
     });
-  });
-});
-
-// --- ADF ----------------------------------------------------------------
-
-describe("adfToPlainText", () => {
-  it("returns '' for non-objects", () => {
-    expect(adfToPlainText(null)).toBe("");
-    expect(adfToPlainText(undefined)).toBe("");
-    expect(adfToPlainText("raw string")).toBe("");
-  });
-
-  it("concatenates text nodes with newlines between block nodes", () => {
-    const doc = adfDoc("First line.", "Second line.");
-    expect(adfToPlainText(doc)).toBe("First line.\nSecond line.");
-  });
-
-  it("handles nested marks like inline links", () => {
-    const doc = {
-      type: "doc",
-      content: [
-        {
-          type: "paragraph",
-          content: [
-            { type: "text", text: "See " },
-            { type: "text", text: "docs", marks: [{ type: "link" }] },
-            { type: "text", text: "." },
-          ],
-        },
-      ],
-    };
-    expect(adfToPlainText(doc)).toBe("See docs.");
   });
 });
 

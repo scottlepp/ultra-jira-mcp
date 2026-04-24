@@ -6,6 +6,7 @@
 // (avatars, `self` URLs, icon URLs, full ADF trees) and caps any
 // potentially large text at a preview length.
 
+import { adfToPlainText } from "./adf.js";
 import type {
   JiraAttachment,
   JiraComment,
@@ -18,49 +19,6 @@ import type {
 const DESCRIPTION_PREVIEW_CHARS = 500;
 const COMMENT_PREVIEW_CHARS = 300;
 const RECENT_COMMENT_COUNT = 3;
-
-// Minimal ADF-to-text extractor: walks the node tree and concatenates any
-// `text` fields, inserting newlines between block-level nodes. PR #3
-// (src/core/adf.ts) will replace this with a proper markdown flattener;
-// for now this is enough to populate previews without dragging the full
-// ADF tree into every summary.
-export function adfToPlainText(doc: unknown): string {
-  if (!doc || typeof doc !== "object") return "";
-  const parts: string[] = [];
-  walk(doc as AdfNode, parts);
-  return parts.join("").trim();
-}
-
-interface AdfNode {
-  type?: string;
-  text?: string;
-  content?: AdfNode[];
-}
-
-const BLOCK_TYPES = new Set([
-  "paragraph",
-  "heading",
-  "bulletList",
-  "orderedList",
-  "listItem",
-  "codeBlock",
-  "blockquote",
-  "rule",
-]);
-
-function walk(node: AdfNode, out: string[]): void {
-  if (typeof node.text === "string") {
-    out.push(node.text);
-  }
-  if (Array.isArray(node.content)) {
-    for (const child of node.content) {
-      walk(child, out);
-    }
-    if (node.type && BLOCK_TYPES.has(node.type)) {
-      out.push("\n");
-    }
-  }
-}
 
 function truncate(s: string, max: number): string {
   if (s.length <= max) return s;
