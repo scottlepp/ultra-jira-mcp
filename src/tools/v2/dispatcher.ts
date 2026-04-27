@@ -84,6 +84,8 @@ interface ZodDef {
   element?: ZodType;
   innerType?: ZodType;
   valueType?: ZodType;
+  // ZodUnion: array of constituent schemas.
+  options?: ZodType[];
 }
 
 function zodKind(schema: ZodType): string {
@@ -164,6 +166,15 @@ function zodFieldToJsonSchema(schema: ZodType): unknown {
     case "ZodRecord":
     case "ZodObject":
       return { type: "object", additionalProperties: true, ...tail };
+    case "ZodUnion": {
+      // Render each constituent as its own JSON Schema and combine
+      // via oneOf. Without this case, fields like
+      // z.union([z.string(), z.array(z.string())]) would emit only
+      // their description with no type info, leaving agents unable
+      // to satisfy the schema.
+      const opts = zodDef(inner).options ?? [];
+      return { oneOf: opts.map(zodFieldToJsonSchema), ...tail };
+    }
     case "ZodAny":
     case "ZodUnknown":
       return tail;

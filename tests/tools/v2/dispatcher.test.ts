@@ -182,4 +182,44 @@ describe("buildInputSchema", () => {
     expect(getBranch?.required).toContain("id");
     expect(getBranch?.required).not.toContain("expand");
   });
+
+  it("emits oneOf for ZodUnion fields so agents see the variant types", () => {
+    // Regression test for PR #174 review: previously ZodUnion fell
+    // through to the default branch and produced { description } only,
+    // leaving the wire shape unconstrained.
+    const tool: ConsolidatedTool = {
+      name: "jira_u",
+      description: "",
+      actions: {
+        do: {
+          description: "",
+          schema: z.object({
+            picky: z
+              .union([z.string(), z.array(z.string()), z.number()])
+              .describe("string, array of strings, or number"),
+          }),
+          operation: "fx.get",
+        },
+      },
+    };
+    const schema = buildInputSchema(tool) as {
+      oneOf: Array<{
+        title?: string;
+        properties: Record<string, unknown>;
+      }>;
+    };
+    const branch = schema.oneOf.find((b) => b.title === "do");
+    const picky = branch?.properties.picky as {
+      oneOf?: Array<{ type?: string; items?: { type?: string } }>;
+      description?: string;
+    };
+    expect(picky?.description).toBe("string, array of strings, or number");
+    expect(picky?.oneOf).toHaveLength(3);
+    expect(picky?.oneOf?.[0]).toEqual({ type: "string" });
+    expect(picky?.oneOf?.[1]).toEqual({
+      type: "array",
+      items: { type: "string" },
+    });
+    expect(picky?.oneOf?.[2]).toEqual({ type: "number" });
+  });
 });
