@@ -89,6 +89,34 @@ describe("operations manifest — shape invariants", () => {
     const blanks = operations.filter((o) => !o.description?.trim()).map((o) => o.name);
     expect(blanks).toEqual([]);
   });
+
+  it("operation name uses the form '<category>.<verb>' with a non-empty category", () => {
+    // Layer 3's generator will route stubs to api/<category>/ based on
+    // the name prefix; this guards against names that don't fit.
+    const malformed = operations
+      .filter((o) => {
+        const idx = o.name.indexOf(".");
+        return idx <= 0 || idx === o.name.length - 1;
+      })
+      .map((o) => o.name);
+    expect(malformed).toEqual([]);
+  });
+
+  it("rawString-bodyShape ops declare exactly one body param", () => {
+    // The dispatcher's contract requires this; catching it at the
+    // manifest level prevents a runtime OperationError later.
+    const problems: string[] = [];
+    for (const op of operations) {
+      if (op.bodyShape !== "rawString") continue;
+      const bodyParams = op.params.filter((p) => p.role === "body");
+      if (bodyParams.length !== 1) {
+        problems.push(
+          `${op.name}: bodyShape="rawString" requires exactly 1 body param, got ${bodyParams.length}`,
+        );
+      }
+    }
+    expect(problems).toEqual([]);
+  });
 });
 
 describe("operations manifest — category coverage", () => {
@@ -165,7 +193,8 @@ describe("operations manifest — category coverage", () => {
       "field.resolutions",
       "field.createMeta",
     ],
-    group: ["group.search", "group.members", "permissions.mine"],
+    group: ["group.search", "group.members"],
+    permissions: ["permissions.mine"],
     server: ["server.info"],
   };
 

@@ -752,7 +752,10 @@ export const operations: Manifest = [
       { name: "filterName", role: "query" },
       { name: "accountId", role: "query" },
       { name: "owner", role: "query" },
-      { name: "groupname", role: "query" },
+      // Note: Jira deprecated `groupname` here in favour of
+      // `groupId` (Cloud REST v3). v2 is a clean break, so we go
+      // straight to the new param.
+      { name: "groupId", role: "query" },
       { name: "projectId", role: "query" },
       { name: "id", role: "query" },
       { name: "orderBy", role: "query" },
@@ -865,6 +868,11 @@ export const operations: Manifest = [
     description: "Add a watcher to an issue.",
     verb: "POST",
     pathTemplate: "/issue/{issueIdOrKey}/watchers",
+    // Jira's POST /issue/{key}/watchers expects a raw JSON string
+    // body (e.g. `"acc123"`), not a JSON object. Without bodyShape,
+    // the dispatcher would send `{"accountId":"acc123"}` which Jira
+    // rejects with HTTP 400.
+    bodyShape: "rawString",
     params: [
       { name: "issueIdOrKey", role: "path", required: true },
       { name: "accountId", role: "body", required: true },
@@ -975,12 +983,16 @@ export const operations: Manifest = [
     verb: "GET",
     pathTemplate: "/group/member",
     params: [
-      { name: "groupname", role: "query", required: true },
+      { name: "groupId", role: "query", required: true },
       { name: "includeInactiveUsers", role: "query" },
       { name: "startAt", role: "query" },
       { name: "maxResults", role: "query" },
     ],
   },
+
+  // =================================================================
+  // Permissions
+  // =================================================================
   {
     name: "permissions.mine",
     description: "List permissions the current user has.",
