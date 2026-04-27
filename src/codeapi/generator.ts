@@ -31,11 +31,17 @@ export interface GenerateApiOptions {
   // pruned (deferred to PR #10 where we own the lifecycle).
   outDir: string;
   // Module specifier the generated `types.ts` imports `Ref` from.
-  // Resolution happens in the agent's execution context, so the
-  // caller passes a value that makes sense there: typically an
-  // absolute path into the installed `jira-mcp` package's build
-  // directory, or a bare specifier if jira-mcp is a peer dep.
-  refsImportPath?: string;
+  // Resolution happens in the agent's execution context, NOT here, so
+  // the caller must pass a value that resolves *from the stubs' final
+  // location*. Two common shapes:
+  //   - bare specifier (e.g. "jira-mcp/build/types/refs.js") only
+  //     works if the agent's working dir has jira-mcp on its node
+  //     module path
+  //   - absolute path (e.g. "/usr/local/lib/.../build/types/refs.js")
+  //     always works but is install-specific
+  // PR #10 owns picking the right value at server-startup time;
+  // there's no safe default the generator can synthesize on its own.
+  refsImportPath: string;
 }
 
 export interface GeneratedFile {
@@ -51,11 +57,6 @@ export interface GenerateApiResult {
   operationCount: number;
   categories: string[];
 }
-
-// Default refs import. Points at the build output relative to the
-// installed jira-mcp package. `jira-mcp/build/types/refs.js` is the
-// stable pin; the file already exists in the repo.
-const DEFAULT_REFS_IMPORT = "jira-mcp/build/types/refs.js";
 
 // Group operations by their category prefix. Returns a Map so iteration
 // order is stable (insertion-ordered by first occurrence in the manifest).
@@ -83,7 +84,7 @@ export interface PlannedFile {
 
 export function planApi(
   manifest: Manifest,
-  refsImportPath: string = DEFAULT_REFS_IMPORT,
+  refsImportPath: string,
 ): PlannedFile[] {
   const groups = groupByCategory(manifest);
   const out: PlannedFile[] = [];
@@ -100,6 +101,14 @@ export function planApi(
     contents: renderRootIndex([...groups.keys()]),
   });
 
+  // Track stub paths so we fail loudly on a manifest where two
+  // operations would emit to the same file. Today's manifest has no
+  // collisions, but a future entry like a second "issue.get" (perhaps
+  // imported from a different category split) would silently shadow
+  // the first one without this check — and the integration test that
+  // counts plan entries would still pass, since one stub gets emitted
+  // per operation either way.
+  const stubPaths = new Map<string, string>();
   for (const [category, ops] of groups) {
     out.push({
       relativePath: `${category}/index.ts`,
@@ -107,6 +116,14 @@ export function planApi(
     });
     for (const op of ops) {
       const stub: RenderedStub = renderStub(op);
+      const collidesWith = stubPaths.get(stub.relativePath);
+      if (collidesWith) {
+        throw new Error(
+          `Operation '${op.name}' would overwrite stub for '${collidesWith}' at ${stub.relativePath}. ` +
+            `Two operations cannot share the same category/verb path.`,
+        );
+      }
+      stubPaths.set(stub.relativePath, op.name);
       out.push({
         relativePath: stub.relativePath,
         contents: stub.contents,
@@ -124,8 +141,7 @@ export function planApi(
 export async function generateApi(
   opts: GenerateApiOptions,
 ): Promise<GenerateApiResult> {
-  const refsImportPath = opts.refsImportPath ?? DEFAULT_REFS_IMPORT;
-  const planned = planApi(opts.manifest, refsImportPath);
+  const planned = planApi(opts.manifest, opts.refsImportPath);
 
   const written: GeneratedFile[] = [];
   // Create directories breadth-first so we don't redundantly mkdir for

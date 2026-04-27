@@ -19,6 +19,11 @@ import {
 
 // --- Fixture manifest --------------------------------------------------
 
+// Stand-in for the refsImportPath the runtime will pass at server
+// startup. Tests don't actually try to resolve this — the generator
+// just embeds it in `types.ts`.
+const TEST_REFS_IMPORT = "test:refs";
+
 // Tiny synthetic manifest used by the structural tests so we don't
 // have to update them every time a real operation is added. The real
 // manifest is exercised by the integration test at the bottom.
@@ -222,7 +227,7 @@ describe("renderTypesFile", () => {
 
 describe("planApi", () => {
   it("plans every operation plus support files, in deterministic order", () => {
-    const plan = planApi(fixtureManifest);
+    const plan = planApi(fixtureManifest, TEST_REFS_IMPORT);
     const paths = plan.map((p) => p.relativePath);
 
     expect(paths).toContain("_client.ts");
@@ -239,7 +244,7 @@ describe("planApi", () => {
   });
 
   it("plans the real manifest without throwing and covers every operation", () => {
-    const plan = planApi(operations);
+    const plan = planApi(operations, TEST_REFS_IMPORT);
     const stubPaths = plan
       .map((p) => p.relativePath)
       .filter((p) => p !== "_client.ts" && p !== "types.ts" && p !== "index.ts")
@@ -247,6 +252,51 @@ describe("planApi", () => {
 
     // One stub per operation, no more, no less.
     expect(stubPaths.length).toBe(operations.length);
+    // And no duplicates — confirms planApi's collision check holds
+    // across every entry actually shipped.
+    expect(new Set(stubPaths).size).toBe(stubPaths.length);
+  });
+
+  it("throws when two operations would emit to the same path", () => {
+    const collidingManifest: Manifest = [
+      {
+        name: "issue.get",
+        description: "First.",
+        verb: "GET",
+        pathTemplate: "/issue/{id}",
+        params: [{ name: "id", role: "path", required: true }],
+      },
+      {
+        name: "issue.get",
+        description: "Duplicate.",
+        verb: "GET",
+        pathTemplate: "/v2/issue/{id}",
+        params: [{ name: "id", role: "path", required: true }],
+      },
+    ];
+    expect(() => planApi(collidingManifest, TEST_REFS_IMPORT)).toThrow(
+      /would overwrite stub for 'issue\.get'/,
+    );
+  });
+
+  it("renames reserved-word verbs in stub function and re-export", () => {
+    const reservedManifest: Manifest = [
+      {
+        name: "thing.delete",
+        description: "Delete a thing.",
+        verb: "DELETE",
+        pathTemplate: "/thing/{id}",
+        params: [{ name: "id", role: "path", required: true }],
+      },
+    ];
+    const plan = planApi(reservedManifest, TEST_REFS_IMPORT);
+    const stub = plan.find((p) => p.relativePath === "thing/delete.ts");
+    const index = plan.find((p) => p.relativePath === "thing/index.ts");
+    expect(stub?.contents).toContain("export function delete_(");
+    // Stub text still references the manifest-stable operation name.
+    expect(stub?.contents).toContain('invoke("thing.delete"');
+    // Re-export uses the renamed binding so the index file is valid TS.
+    expect(index?.contents).toContain('export { delete_ } from "./delete.js"');
   });
 });
 
@@ -272,11 +322,14 @@ describe("generateApi", () => {
     const result = await generateApi({
       manifest: fixtureManifest,
       outDir,
+      refsImportPath: TEST_REFS_IMPORT,
     });
 
     expect(result.operationCount).toBe(fixtureManifest.length);
     expect(result.categories.sort()).toEqual(["board", "issue", "server"]);
-    expect(result.files.length).toBe(planApi(fixtureManifest).length);
+    expect(result.files.length).toBe(
+      planApi(fixtureManifest, TEST_REFS_IMPORT).length,
+    );
 
     // Spot-check a few of the actual files on disk.
     const issueGet = await fs.readFile(
@@ -290,16 +343,29 @@ describe("generateApi", () => {
       "utf8",
     );
     expect(rootIndex).toContain("export * as issue from");
+
+    // types.ts uses the configured import path — verifies refsImportPath
+    // is plumbed end-to-end through generateApi.
+    const types = await fs.readFile(path.join(outDir, "types.ts"), "utf8");
+    expect(types).toContain(`from "${TEST_REFS_IMPORT}"`);
   });
 
   it("is idempotent across consecutive runs", async () => {
-    const first = await generateApi({ manifest: fixtureManifest, outDir });
+    const first = await generateApi({
+      manifest: fixtureManifest,
+      outDir,
+      refsImportPath: TEST_REFS_IMPORT,
+    });
     const firstSnapshot: Record<string, string> = {};
     for (const f of first.files) {
       firstSnapshot[f.path] = await fs.readFile(f.path, "utf8");
     }
 
-    const second = await generateApi({ manifest: fixtureManifest, outDir });
+    const second = await generateApi({
+      manifest: fixtureManifest,
+      outDir,
+      refsImportPath: TEST_REFS_IMPORT,
+    });
     expect(second.files.length).toBe(first.files.length);
     for (const f of second.files) {
       const before = firstSnapshot[f.path];
@@ -309,7 +375,11 @@ describe("generateApi", () => {
   });
 
   it("can generate against the real manifest", async () => {
-    const result = await generateApi({ manifest: operations, outDir });
+    const result = await generateApi({
+      manifest: operations,
+      outDir,
+      refsImportPath: TEST_REFS_IMPORT,
+    });
     expect(result.operationCount).toBe(operations.length);
 
     // Sanity: the file we know exists in the manifest renders to disk.
@@ -318,5 +388,13 @@ describe("generateApi", () => {
       "utf8",
     );
     expect(issueGet).toContain('return invoke("issue.get", args);');
+
+    // The real manifest has multiple `*.delete` operations — confirm
+    // the reserved-word rename actually runs end-to-end on disk.
+    const issueDelete = await fs.readFile(
+      path.join(outDir, "issue", "delete.ts"),
+      "utf8",
+    );
+    expect(issueDelete).toContain("export function delete_(");
   });
 });
