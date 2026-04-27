@@ -12,11 +12,19 @@ import {
 import { getConfig, getToolFilterConfig, ToolFilterConfig } from "./config.js";
 import { JiraClient, JiraApiError } from "./auth/jira-client.js";
 import { getFilteredTools, handleTool } from "./tools/index.js";
+import { v2Tools, handleV2Tool, isV2Tool } from "./tools/v2/index.js";
 import {
   resourceDefinitions,
   resourceTemplates,
   handleResource,
 } from "./resources/index.js";
+
+// Opt-in flag for the v2 consolidated tools landed in PR #7b. When
+// enabled, the v2 tools are appended to the listing returned to MCP
+// clients and routed through their dispatcher; v1 tools remain
+// untouched. This makes the transition non-breaking while we build
+// out the full v2 surface in PR #7c.
+const v2ToolsEnabled = (process.env.JIRA_V2_TOOLS ?? "").trim() === "1";
 
 // Create the MCP server using the lower-level Server class for more control
 const server = new Server(
@@ -65,7 +73,10 @@ if (filteredTools.length < 50) {
 
 // Register tools list handler
 server.setRequestHandler(ListToolsRequestSchema, async () => {
-  return { tools: filteredTools };
+  // When the v2 flag is set, append the consolidated tools to the
+  // listing. v1 and v2 names don't overlap, so concatenation is safe.
+  const tools = v2ToolsEnabled ? [...filteredTools, ...v2Tools] : filteredTools;
+  return { tools };
 });
 
 // Register tool call handler
@@ -74,7 +85,13 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
   try {
     const client = getClient();
-    const result = await handleTool(client, name, args || {}, toolFilterConfig);
+    // Route v2 tools through their own dispatcher when the flag is on
+    // *and* the name matches one. Falling back to v1 keeps behavior
+    // identical when v2 is off.
+    const result =
+      v2ToolsEnabled && isV2Tool(name)
+        ? await handleV2Tool(client, name, args || {})
+        : await handleTool(client, name, args || {}, toolFilterConfig);
 
     return {
       content: [
