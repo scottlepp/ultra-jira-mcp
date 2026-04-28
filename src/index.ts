@@ -26,6 +26,7 @@ import {
   JIRA_CODE_API_TOOL_NAME,
   type CodeApiToolContext,
 } from "./codeapi/tool.js";
+import { closeHttpPool } from "./core/http.js";
 
 // --- Server -----------------------------------------------------------
 
@@ -165,9 +166,19 @@ async function main() {
 
 async function shutdown(signal: NodeJS.Signals) {
   console.error(`Received ${signal}, shutting down`);
+  // Order matters:
+  //   1) close the MCP transport so we stop accepting new tool calls
+  //   2) close the bridge so in-flight stub calls drain rather than
+  //      get cut mid-response
+  //   3) close the undici pool so any pending Jira HTTP request
+  //      finishes (or is allowed to error cleanly) before exit
+  // Each step is best-effort — a failure in one shouldn't block the
+  // others.
+  await server.close().catch(() => {});
   if (modeState?.mode === "code-api") {
     await modeState.bridge.close().catch(() => {});
   }
+  await closeHttpPool().catch(() => {});
   process.exit(0);
 }
 

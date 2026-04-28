@@ -39,6 +39,25 @@ describe("buildCodeApiToolResponse", () => {
     expect(out.usage).toContain(".ref");
   });
 
+  it("prefixes the runner invocation with JIRA_MCP_SOCKET=<addr>", () => {
+    // Regression: the MCP server's process.env doesn't propagate to
+    // Claude Code's Bash subprocesses (Bash spawns from Claude Code,
+    // not from the server). The usage snippet must therefore set the
+    // env var inline rather than assume it's already in scope.
+    const out = buildCodeApiToolResponse({
+      apiDir: "/tmp/jira-mcp/abc/api",
+      socketAddress: "/tmp/jira-mcp/abc/ipc.sock",
+    });
+    expect(out.usage).toContain("JIRA_MCP_SOCKET=/tmp/jira-mcp/abc/ipc.sock");
+    // The prefix must be on the same line as the runner command (not
+    // a separate `export` or a comment) so the shell parses it as an
+    // env-var assignment for that command. Match the runner line
+    // directly rather than scanning by keyword — we want the exact
+    // shape `JIRA_MCP_SOCKET=… npx tsx` to land somewhere in the
+    // snippet.
+    expect(out.usage).toMatch(/JIRA_MCP_SOCKET=\S+\s+npx tsx\b/);
+  });
+
   it("stays under 1KB so the tool's first call doesn't blow the budget", () => {
     const out = buildCodeApiToolResponse({
       apiDir: "/tmp/jira-mcp/abcdef/api",

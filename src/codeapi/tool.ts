@@ -51,12 +51,20 @@ export interface CodeApiToolResponse {
 export function buildCodeApiToolResponse(
   ctx: CodeApiToolContext,
 ): CodeApiToolResponse {
+  // The agent typically runs this via Claude Code's Bash tool, whose
+  // child shells *do not* inherit env vars from the MCP server
+  // process. So the snippet must export JIRA_MCP_SOCKET inline rather
+  // than assume it's already set. tsx is the recommended runner — it
+  // executes the .ts stubs directly.
   const usage = [
-    `// In your shell (tsx required):`,
+    `# Run in your shell (tsx required). The JIRA_MCP_SOCKET prefix is`,
+    `# load-bearing — child shells don't inherit the MCP server's env.`,
+    `JIRA_MCP_SOCKET=${ctx.socketAddress} npx tsx -e '`,
     `import * as jira from "${ctx.apiDir}/index.js";`,
     `const issue = await jira.issue.get({ issueIdOrKey: "PROJ-1" });`,
-    `// issue.summary — trimmed projection (free to inspect)`,
-    `// issue.ref    — absolute path to full JSON; read with fs.readFile when needed`,
+    `console.log(issue.summary.status);  // trimmed projection — free to inspect`,
+    `// issue.ref points at the full JSON; read it with fs.readFile when you need detail.`,
+    `'`,
   ].join("\n");
 
   return {

@@ -19,10 +19,16 @@ import type { CodeApiToolContext } from "./tool.js";
 // jira-mcp package, so we use the absolute path of this build's
 // compiled refs.js. Resolved relative to *this* module so it stays
 // correct under `npm link`, npm install, or running from `build/`.
+//
+// Caveat: this targets compiled output (build/codeapi/boot.js →
+// build/types/refs.js). If anyone ever runs the server through `tsx
+// src/index.ts` directly, the path resolves to `src/types/refs.js`
+// — which doesn't exist (only refs.ts does). The repo has no tsx
+// dev script today, so production paths are safe; the npm `dev`
+// script is `tsc --watch`, which writes refs.js to build/. Callers
+// running outside that flow should pass an explicit refsImportPath.
 export function defaultRefsImportPath(): string {
   const here = path.dirname(fileURLToPath(import.meta.url));
-  // src/codeapi/boot.ts → src/types/refs.ts (after compile:
-  // build/codeapi/boot.js → build/types/refs.js).
   return path.join(here, "..", "types", "refs.js");
 }
 
