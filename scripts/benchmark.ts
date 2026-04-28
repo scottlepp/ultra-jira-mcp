@@ -183,7 +183,15 @@ async function classicCallCost(
   args: Record<string, unknown>,
 ): Promise<CallCost> {
   const resp = await client.callTool({ name: toolName, arguments: args });
-  const bytes = byteLength(resp);
+  // Strip the MCP envelope ({content:[{type,text}]}) so we measure
+  // just the JSON payload — what the agent's reasoning actually
+  // sees as tool output. Code-api's invokeOverBridge already
+  // returns the bare payload, so without this strip the per-call
+  // numbers are asymmetric and code-api looks ~50B leaner per call
+  // for purely envelope reasons. On a 1.4KB simple-ticket row
+  // those 50B account for most of the gap.
+  const payload = parseToolText(resp);
+  const bytes = payload === null ? byteLength(resp) : byteLength(payload);
   return {
     responseBytes: bytes,
     summaryOnlyBytes: bytes,
@@ -217,6 +225,12 @@ async function codeApiCallCost(
   };
 }
 
+// 30s is generous — a real Jira call on a chunky ticket completes
+// in 2-3s. Past that we're hung on rate-limit, network, or
+// auth. Surfacing a timeout error beats a script that silently
+// blocks forever.
+const BRIDGE_CALL_TIMEOUT_MS = 30_000;
+
 function invokeOverBridge(
   address: string,
   operation: string,
@@ -231,6 +245,13 @@ function invokeOverBridge(
       : { path: address };
     const socket = net.connect(target as never);
     socket.setEncoding("utf8");
+    socket.setTimeout(BRIDGE_CALL_TIMEOUT_MS, () => {
+      socket.destroy(
+        new Error(
+          `bridge call to ${operation} timed out after ${BRIDGE_CALL_TIMEOUT_MS}ms`,
+        ),
+      );
+    });
     let buf = "";
     socket.on("connect", () => {
       socket.write(
