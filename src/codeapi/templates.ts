@@ -223,24 +223,108 @@ export function renderTypesFile(refsImportPath: string): string {
   );
 }
 
-// _client.ts — placeholder bridge. PR #9 wires this to a Unix
-// socket / loopback TCP. For now it throws so a stub used in
-// isolation surfaces a clear error rather than silently hanging.
+// _client.ts — connects to the jira-mcp bridge over a local socket
+// and forwards each `invoke()` call as a single ND-JSON request.
+//
+// Wire format is documented in src/codeapi/bridge.ts. The client
+// opens a fresh connection per call: simpler than pooling, and each
+// call's latency is dominated by the Jira HTTP round-trip on the
+// server side, not the local socket setup.
+//
+// Address discovery: reads `JIRA_MCP_SOCKET` from the environment.
+// PR #10 will set this when the MCP server spawns the agent's
+// execution context. Two formats supported:
+//
+//   - "/abs/path/to/ipc.sock"      — Unix domain socket (POSIX)
+//   - "tcp:127.0.0.1:54321"        — loopback TCP (Windows)
 export function renderClientFile(): string {
   return (
     `${GENERATED_BANNER}\n\n` +
-    `// Bridge to the running jira-mcp server. The real implementation\n` +
-    `// (JSON-RPC over Unix socket or loopback TCP) lands in PR #9.\n` +
-    `// Until then, calls fail loudly so misuse is obvious.\n\n` +
+    `// Bridge client for the jira-mcp Layer 3 code-api.\n` +
+    `// Connects to the bridge server over a local socket per call.\n\n` +
+    `import { connect, type Socket } from "node:net";\n` +
     `import type { Ref } from "./types.js";\n\n` +
-    `export async function invoke(\n` +
-    `  operationName: string,\n` +
-    `  _args: Record<string, unknown>,\n` +
+    `const SOCKET_ENV = "JIRA_MCP_SOCKET";\n\n` +
+    `interface BridgeOk { id: string; result: Ref<unknown> }\n` +
+    `interface BridgeErr { id: string; error: { name: string; message: string } }\n` +
+    `type BridgeResponse = BridgeOk | BridgeErr;\n\n` +
+    `function resolveSocket(): { path?: string; host?: string; port?: number } {\n` +
+    `  const raw = process.env[SOCKET_ENV];\n` +
+    `  if (!raw) {\n` +
+    `    throw new Error(\n` +
+    `      \`jira-mcp bridge address not set: \${SOCKET_ENV} env var missing. \` +\n` +
+    `        \`Was this stub called outside the MCP server's execution context?\`,\n` +
+    `    );\n` +
+    `  }\n` +
+    `  if (raw.startsWith("tcp:")) {\n` +
+    `    const lastColon = raw.lastIndexOf(":");\n` +
+    `    const host = raw.slice(4, lastColon);\n` +
+    `    const port = Number(raw.slice(lastColon + 1));\n` +
+    `    if (!host || !Number.isFinite(port)) {\n` +
+    `      throw new Error(\`Malformed \${SOCKET_ENV}: \${raw}\`);\n` +
+    `    }\n` +
+    `    return { host, port };\n` +
+    `  }\n` +
+    `  return { path: raw };\n` +
+    `}\n\n` +
+    `let nextId = 0;\n\n` +
+    `export function invoke(\n` +
+    `  operation: string,\n` +
+    `  args: Record<string, unknown>,\n` +
     `): Promise<Ref<unknown>> {\n` +
-    `  throw new Error(\n` +
-    `    \`jira-mcp code-api bridge not implemented yet (operation: \${operationName}). \` +\n` +
-    `      \`Wired in PR #9 — until then, use the classic MCP tools.\`,\n` +
-    `  );\n` +
+    `  const id = String(++nextId);\n` +
+    `  return new Promise<Ref<unknown>>((resolve, reject) => {\n` +
+    `    let target: { path?: string; host?: string; port?: number };\n` +
+    `    try {\n` +
+    `      target = resolveSocket();\n` +
+    `    } catch (err) {\n` +
+    `      reject(err);\n` +
+    `      return;\n` +
+    `    }\n` +
+    `    const socket: Socket = connect(target as never);\n` +
+    `    socket.setEncoding("utf8");\n` +
+    `    let buffer = "";\n` +
+    `    let settled = false;\n` +
+    `    const settle = (fn: () => void) => {\n` +
+    `      if (settled) return;\n` +
+    `      settled = true;\n` +
+    `      socket.end();\n` +
+    `      fn();\n` +
+    `    };\n` +
+    `    socket.on("connect", () => {\n` +
+    `      socket.write(\n` +
+    `        JSON.stringify({ id, method: "invoke", params: { operation, args } }) + "\\n",\n` +
+    `      );\n` +
+    `    });\n` +
+    `    socket.on("data", (chunk: string) => {\n` +
+    `      buffer += chunk;\n` +
+    `      const nl = buffer.indexOf("\\n");\n` +
+    `      if (nl < 0) return;\n` +
+    `      const line = buffer.slice(0, nl);\n` +
+    `      let resp: BridgeResponse;\n` +
+    `      try {\n` +
+    `        resp = JSON.parse(line);\n` +
+    `      } catch (err) {\n` +
+    `        settle(() => reject(err));\n` +
+    `        return;\n` +
+    `      }\n` +
+    `      if ("error" in resp) {\n` +
+    `        const e = new Error(resp.error.message);\n` +
+    `        e.name = resp.error.name;\n` +
+    `        settle(() => reject(e));\n` +
+    `      } else {\n` +
+    `        settle(() => resolve(resp.result));\n` +
+    `      }\n` +
+    `    });\n` +
+    `    socket.on("error", (err: Error) => settle(() => reject(err)));\n` +
+    `    socket.on("close", () => {\n` +
+    `      if (!settled) {\n` +
+    `        settle(() =>\n` +
+    `          reject(new Error("jira-mcp bridge closed before responding")),\n` +
+    `        );\n` +
+    `      }\n` +
+    `    });\n` +
+    `  });\n` +
     `}\n`
   );
 }

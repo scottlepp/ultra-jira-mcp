@@ -206,11 +206,38 @@ describe("renderRootIndex", () => {
 // --- renderClientFile / renderTypesFile -------------------------------
 
 describe("renderClientFile", () => {
-  it("emits an invoke function that throws (PR #9 placeholder)", () => {
+  it("emits an ND-JSON socket client backed by JIRA_MCP_SOCKET", () => {
     const out = renderClientFile();
-    expect(out).toContain("export async function invoke(");
-    expect(out).toContain("PR #9");
-    expect(out).toContain("throw new Error");
+    expect(out).toContain("export function invoke(");
+    expect(out).toContain('SOCKET_ENV = "JIRA_MCP_SOCKET"');
+    // Both transports are supported.
+    expect(out).toContain('raw.startsWith("tcp:")');
+    expect(out).toContain("return { path: raw };");
+    // ND-JSON framing — request ends in a newline, response is one
+    // line per response.
+    expect(out).toContain('+ "\\n"');
+    expect(out).toContain('"\\n"');
+    // Error shape from the bridge surfaces as a real Error.
+    expect(out).toContain('"error" in resp');
+  });
+
+  it("calls resolveSocket() inside the Promise constructor (no sync throw)", () => {
+    // Regression: an earlier draft called resolveSocket() before
+    // `return new Promise(...)`. A missing JIRA_MCP_SOCKET would
+    // then throw synchronously instead of producing a rejected
+    // promise, breaking `.catch()` and Promise.all callers. The
+    // body must declare `try { target = resolveSocket(); }` inside
+    // the executor and reject() on failure.
+    const out = renderClientFile();
+    // Match the *call site* (`target = resolveSocket()`), not the
+    // function definition `function resolveSocket()` that appears
+    // earlier in the file.
+    const promiseStart = out.indexOf("new Promise<Ref<unknown>>");
+    const callSite = out.indexOf("target = resolveSocket()");
+    expect(promiseStart).toBeGreaterThan(0);
+    expect(callSite).toBeGreaterThan(promiseStart);
+    expect(out).toContain("try {\n      target = resolveSocket()");
+    expect(out).toContain("reject(err);");
   });
 });
 
