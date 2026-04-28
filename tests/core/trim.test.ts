@@ -356,4 +356,12 @@ describe("voteListSummary", () => {
     const s = voteListSummary({ voters: [{}] });
     expect(s.votes).toBe(1);
   });
+
+  it("treats null/empty input as empty", () => {
+    expect(voteListSummary(null)).toEqual({
+      votes: 0,
+      hasVoted: undefined,
+      truncated: false,
+    });
+  });
 });

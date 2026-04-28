@@ -997,9 +997,9 @@ export const operations: Manifest = [
       { name: "caseInsensitive", role: "query" },
       { name: "maxResults", role: "query" },
     ],
-    // /groups/picker returns { groups: [...], total }; treat as a
-    // paginated list — paginatedListSummary's pageItemCount falls
-    // through to the array length when `groups` isn't a known key.
+    // /groups/picker returns { groups: [...], total }. The
+    // `groups` array key is included in paginatedListSummary's
+    // PageBean recognizer alongside comments/worklogs/issues/values.
     trim: "list",
   },
   {
