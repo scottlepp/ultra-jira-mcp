@@ -171,20 +171,32 @@ export class OperationError extends Error {
   }
 }
 
-// Executes an operation by name against a JiraClient. Returns the
-// (optionally trimmed) response. This is the single entry point both
-// Layer 2 (classic tools) and Layer 3 (bridge handler) use — no Jira
-// call should go around it.
-export async function invokeOperation(
-  manifest: Manifest,
-  client: JiraClient,
-  name: string,
-  args: Record<string, unknown>,
-): Promise<unknown> {
+// Look up an operation by name, throwing OperationError on miss. Used
+// by both invokeOperation and invokeOperationRaw so the bridge layer
+// can resolve an op to inspect its `trim` field separately from
+// running the call.
+export function findOperation(manifest: Manifest, name: string): Operation {
   const op = manifest.find((o) => o.name === name);
   if (!op) {
     throw new OperationError(`Unknown operation: ${name}`, name);
   }
+  return op;
+}
+
+// Executes an operation against a JiraClient and returns the *raw*
+// response — no trim projection applied. Used by Layer 3's bridge
+// handler, which wants to write the full response to disk via
+// `sandbox()` and apply the trim only to the in-band `summary`.
+//
+// Layer 2 callers should keep using `invokeOperation` (which trims
+// in-place) so consolidated tools return the compact shape directly.
+export async function invokeOperationRaw(
+  manifest: Manifest,
+  client: JiraClient,
+  name: string,
+  args: Record<string, unknown>,
+): Promise<{ op: Operation; response: unknown }> {
+  const op = findOperation(manifest, name);
 
   const split = splitArgs(op, args);
   if (split.missingRequired.length > 0) {
@@ -268,6 +280,21 @@ export async function invokeOperation(
     }
   }
 
+  return { op, response };
+}
+
+// Executes an operation by name against a JiraClient. Returns the
+// (optionally trimmed) response. This is the entry point Layer 2
+// (classic tools) uses; Layer 3 (the bridge) uses invokeOperationRaw
+// directly so it can sandbox the full response while still applying
+// the trim to the summary.
+export async function invokeOperation(
+  manifest: Manifest,
+  client: JiraClient,
+  name: string,
+  args: Record<string, unknown>,
+): Promise<unknown> {
+  const { op, response } = await invokeOperationRaw(manifest, client, name, args);
   if (op.trim) {
     const projection = trimRegistry[op.trim];
     return projection(response);
