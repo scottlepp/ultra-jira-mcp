@@ -155,38 +155,61 @@ describe("dispatchTool", () => {
 // --- buildInputSchema tests -------------------------------------------
 
 describe("buildInputSchema", () => {
-  it("emits oneOf with one branch per action and a const action discriminator", () => {
+  it("emits a flat object schema with action as a string enum", () => {
+    // Top-level oneOf/allOf/anyOf is rejected by the Anthropic
+    // tool-use API. The schema must stay flat; per-action arg
+    // validation happens in dispatchTool against the Zod schema.
     const schema = buildInputSchema(fixtureTool) as {
       type: string;
-      oneOf: Array<{
-        type: string;
-        properties: { action: { const: string } };
-        required: string[];
-      }>;
+      properties: {
+        action: { type: string; enum: string[] };
+        [key: string]: unknown;
+      };
+      required: string[];
+      additionalProperties: boolean;
+      oneOf?: unknown;
+      allOf?: unknown;
+      anyOf?: unknown;
     };
     expect(schema.type).toBe("object");
-    expect(schema.oneOf).toHaveLength(2);
-    const titles = schema.oneOf.map((b) => (b as unknown as { title: string }).title).sort();
-    expect(titles).toEqual(["create", "get"]);
-    for (const branch of schema.oneOf) {
-      expect(branch.properties.action.const).toMatch(/^(get|create)$/);
-      expect(branch.required).toContain("action");
-    }
+    expect(schema.oneOf).toBeUndefined();
+    expect(schema.allOf).toBeUndefined();
+    expect(schema.anyOf).toBeUndefined();
+    expect(schema.properties.action.type).toBe("string");
+    expect(schema.properties.action.enum.sort()).toEqual(["create", "get"]);
+    expect(schema.required).toEqual(["action"]);
+    expect(schema.additionalProperties).toBe(false);
   });
 
-  it("marks optional Zod fields as not-required in the JSON schema", () => {
+  it("merges fields from all actions into a single property bag", () => {
     const schema = buildInputSchema(fixtureTool) as {
-      oneOf: Array<{ title?: string; required: string[] }>;
+      properties: Record<string, unknown>;
     };
-    const getBranch = schema.oneOf.find((b) => b.title === "get");
-    expect(getBranch?.required).toContain("id");
-    expect(getBranch?.required).not.toContain("expand");
+    // `id` is from get, `name` is from create — both must be present
+    // so the agent can construct a valid call for either action.
+    expect(schema.properties.id).toBeDefined();
+    expect(schema.properties.name).toBeDefined();
+    expect(schema.properties.expand).toBeDefined();
+  });
+
+  it("surfaces per-action required/optional fields in the description", () => {
+    // Since the JSON Schema can't encode "required only when
+    // action=X", the description has to carry that signal so the
+    // agent doesn't have to guess.
+    const schema = buildInputSchema(fixtureTool) as { description: string };
+    expect(schema.description).toContain("get:");
+    expect(schema.description).toContain("Get one");
+    expect(schema.description).toContain("requires id");
+    expect(schema.description).toContain("optional expand");
+    expect(schema.description).toContain("create:");
+    expect(schema.description).toContain("requires name");
   });
 
   it("emits oneOf for ZodUnion fields so agents see the variant types", () => {
     // Regression test for PR #174 review: previously ZodUnion fell
     // through to the default branch and produced { description } only,
-    // leaving the wire shape unconstrained.
+    // leaving the wire shape unconstrained. oneOf nested under a
+    // property is fine — only top-level oneOf is rejected.
     const tool: ConsolidatedTool = {
       name: "jira_u",
       description: "",
@@ -203,13 +226,9 @@ describe("buildInputSchema", () => {
       },
     };
     const schema = buildInputSchema(tool) as {
-      oneOf: Array<{
-        title?: string;
-        properties: Record<string, unknown>;
-      }>;
+      properties: Record<string, unknown>;
     };
-    const branch = schema.oneOf.find((b) => b.title === "do");
-    const picky = branch?.properties.picky as {
+    const picky = schema.properties.picky as {
       oneOf?: Array<{ type?: string; items?: { type?: string } }>;
       description?: string;
     };
