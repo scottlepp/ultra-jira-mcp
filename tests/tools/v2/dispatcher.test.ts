@@ -173,6 +173,30 @@ describe("dispatchTool", () => {
     expect(result).toEqual(raw);
   });
 
+  it("returns the same response with or without `full` on an action that has no trim", async () => {
+    // fx.get has no trim configured. invokeOperation and
+    // invokeOperationRaw should produce identical output, so
+    // `full: true` is effectively a no-op here. Locks in that
+    // behavior so a future trim hookup doesn't quietly change
+    // semantics for callers passing `full` defensively.
+    const ctx = makeMockClient();
+    const raw = { id: "10000", key: "X-1", fields: { summary: "hi" } };
+    ctx.setReturn(raw);
+    const trimmed = await dispatchTool(fixtureTool, fixtureManifest, ctx.client, {
+      action: "get",
+      id: "10000",
+    });
+    ctx.setReturn(raw);
+    const full = await dispatchTool(fixtureTool, fixtureManifest, ctx.client, {
+      action: "get",
+      id: "10000",
+      full: true,
+    });
+    expect(trimmed).toEqual(raw);
+    expect(full).toEqual(raw);
+    expect(trimmed).toEqual(full);
+  });
+
   it("treats `full: false` and a missing `full` identically (still trimmed)", async () => {
     const ctx = makeMockClient();
     ctx.setReturn([{ id: "a" }]);

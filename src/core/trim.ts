@@ -146,6 +146,11 @@ function issueLinkSummary(l: {
   inwardIssue?: { id: string; key: string; fields?: { summary: string } };
   outwardIssue?: { id: string; key: string; fields?: { summary: string } };
 }): IssueLinkSummary {
+  // Jira's contract is exactly one of inwardIssue/outwardIssue per
+  // link record — the API returns each link once from each side, not
+  // a combined record with both. So presence of inwardIssue means
+  // *this* issue is on the outward side of the link type and the
+  // linked issue is the inward target, and vice versa.
   const direction: "inward" | "outward" = l.inwardIssue ? "inward" : "outward";
   const linked = l.inwardIssue ?? l.outwardIssue;
   return {
