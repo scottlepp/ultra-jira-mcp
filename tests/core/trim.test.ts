@@ -245,6 +245,33 @@ describe("searchSummary", () => {
       priority: "High",
     });
   });
+
+  it("handles the new cursor-paginated /search/jql shape (no total, isLast set)", () => {
+    // /search/jql v3 dropped total/startAt/maxResults and replaced
+    // them with isLast + nextPageToken. searchSummary should pass
+    // those through and not crash on a missing total.
+    const r = {
+      isLast: false,
+      nextPageToken: "tok-abc",
+      issues: [makeIssue()],
+    } as unknown as JiraSearchResult & {
+      isLast?: boolean;
+      nextPageToken?: string;
+    };
+    const s = searchSummary(r);
+    expect(s.total).toBeUndefined();
+    expect(s.startAt).toBeUndefined();
+    expect(s.maxResults).toBeUndefined();
+    expect(s.isLast).toBe(false);
+    expect(s.nextPageToken).toBe("tok-abc");
+    expect(s.issues).toHaveLength(1);
+  });
+
+  it("handles a missing issues array (defensive)", () => {
+    const r = { total: 0 } as unknown as JiraSearchResult;
+    const s = searchSummary(r);
+    expect(s.issues).toEqual([]);
+  });
 });
 
 // --- paginatedListSummary ----------------------------------------------
