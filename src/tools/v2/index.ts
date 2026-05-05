@@ -80,7 +80,12 @@ function categoryOf(toolName: string): string {
 // emits the full 16-tool surface (back-compat with how the MCP server
 // called this before c2). With a filter:
 //   - Tools whose category isn't in `enabledCategories` are dropped
-//     entirely. Empty `enabledCategories` means "all enabled".
+//     from the listing. Empty `enabledCategories` means "all enabled".
+//     This is a token-cost knob, not a hard enforcement: the dispatch
+//     path (`handleV2Tool`) doesn't consult `enabledCategories`, so a
+//     misbehaving or stale-cache agent could still reach a hidden
+//     tool. Use `disabledActions` for the safety guarantee — it's
+//     enforced at the manifest dispatch layer in both modes.
 //   - Actions in `disabledActions` are stripped from each tool's
 //     `oneOf`, so the disabled action's schema doesn't bloat the
 //     tool listing. A tool with every action disabled is dropped.

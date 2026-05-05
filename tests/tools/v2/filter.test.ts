@@ -7,31 +7,15 @@
 
 import { describe, expect, it } from "vitest";
 
-import type { ToolFilterConfig } from "../../../src/config.js";
+import {
+  CONSOLIDATED_CATEGORIES,
+  type ToolFilterConfig,
+} from "../../../src/config.js";
 import {
   allConsolidatedTools,
   getV2Tools,
   v2Tools,
 } from "../../../src/tools/v2/index.js";
-
-const ALL_CATEGORIES = [
-  "issue",
-  "search",
-  "comment",
-  "user",
-  "project",
-  "board",
-  "sprint",
-  "epic",
-  "worklog",
-  "attachment",
-  "filter",
-  "link",
-  "watcher",
-  "field",
-  "group",
-  "server",
-];
 
 function emptyFilter(): ToolFilterConfig {
   return { enabledCategories: [], disabledActions: [] };
@@ -154,17 +138,40 @@ describe("getV2Tools disabledActions filter", () => {
     expect(actions).not.toContain("create");
     expect(actions).toContain("get");
   });
+
+  it("a disabled action whose category is excluded is a no-op", () => {
+    // Locks in the implicit ordering invariant: enabledCategories
+    // runs first, so disabledActions naming an op outside that set
+    // never has anything to filter. If a future refactor swapped
+    // the order or surfaced a warning, this test would fail and
+    // surface the change.
+    const out = getV2Tools({
+      enabledCategories: ["search"],
+      disabledActions: ["issue.delete"],
+    });
+    expect(out.map((t) => t.name)).toEqual(["jira_search"]);
+    // jira_issue is gone via the category filter; jira_search is
+    // unaffected by the issue.delete entry.
+    const searchActions = actionsIn(out[0]);
+    expect(searchActions.length).toBeGreaterThan(0);
+  });
 });
 
 describe("getV2Tools sanity: all 16 categories accept a filter that keeps them", () => {
-  // Any future category-name drift between config and tool layers
-  // would surface here.
-  it.each(ALL_CATEGORIES)("category %s yields exactly one tool", (cat) => {
-    const out = getV2Tools({
-      enabledCategories: [cat],
-      disabledActions: [],
-    });
-    expect(out).toHaveLength(1);
-    expect(out[0].name).toBe(`jira_${cat}`);
-  });
+  // Source the canonical list directly from src/config.ts. If a new
+  // consolidated tool is added but only `CONSOLIDATED_CATEGORIES` is
+  // updated (and not the test), the new category gets covered for
+  // free. Likewise, a tool added to the runtime without updating the
+  // canonical list fails this test.
+  it.each(CONSOLIDATED_CATEGORIES)(
+    "category %s yields exactly one tool",
+    (cat) => {
+      const out = getV2Tools({
+        enabledCategories: [cat],
+        disabledActions: [],
+      });
+      expect(out).toHaveLength(1);
+      expect(out[0].name).toBe(`jira_${cat}`);
+    },
+  );
 });
