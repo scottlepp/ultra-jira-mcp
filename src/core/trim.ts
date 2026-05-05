@@ -141,18 +141,37 @@ export const issueSummary = (i: JiraIssue): IssueSummary => {
 
 // --- Search result ------------------------------------------------------
 
+// Jira's GET /search/jql endpoint dropped `total`/`startAt`/`maxResults`
+// and replaced them with cursor-based `isLast`/`nextPageToken` pagination.
+// Older callers and other search-shaped endpoints still emit the full
+// PageBean shape, so we preserve those fields when present and fall
+// back to issue-count + `isLast` when they aren't.
 export interface SearchSummary {
-  total: number;
-  startAt: number;
-  maxResults: number;
+  // Known when the server returns the legacy PageBean shape; absent
+  // when /search/jql responds. Callers should treat these as hints,
+  // not hard counts.
+  total?: number;
+  startAt?: number;
+  maxResults?: number;
+  // Cursor-based pagination signal from /search/jql. `false` (or
+  // missing `nextPageToken`) means more pages are available.
+  isLast?: boolean;
+  nextPageToken?: string;
   issues: Array<Pick<IssueSummary, "key" | "summary" | "status" | "assignee" | "priority" | "updated">>;
 }
 
-export const searchSummary = (r: JiraSearchResult): SearchSummary => ({
+export const searchSummary = (
+  r: JiraSearchResult & {
+    isLast?: boolean;
+    nextPageToken?: string;
+  },
+): SearchSummary => ({
   total: r.total,
   startAt: r.startAt,
   maxResults: r.maxResults,
-  issues: r.issues.map((i) => ({
+  isLast: r.isLast,
+  nextPageToken: r.nextPageToken,
+  issues: (r.issues ?? []).map((i) => ({
     key: i.key,
     summary: i.fields.summary,
     status: i.fields.status?.name,
