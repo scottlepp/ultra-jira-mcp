@@ -28,21 +28,21 @@ afterEach(() => {
 });
 
 describe("getConfig toolMode", () => {
-  it('defaults to "code-api" when JIRA_TOOL_MODE is unset', () => {
-    expect(getConfig().toolMode).toBe("code-api");
+  it('defaults to "classic" when JIRA_TOOL_MODE is unset', () => {
+    expect(getConfig().toolMode).toBe("classic");
   });
 
-  it('defaults to "code-api" when JIRA_TOOL_MODE is empty', () => {
+  it('defaults to "classic" when JIRA_TOOL_MODE is empty', () => {
     process.env.JIRA_TOOL_MODE = "";
-    expect(getConfig().toolMode).toBe("code-api");
+    expect(getConfig().toolMode).toBe("classic");
   });
 
-  it('accepts "classic"', () => {
+  it('accepts "classic" explicitly', () => {
     process.env.JIRA_TOOL_MODE = "classic";
     expect(getConfig().toolMode).toBe("classic");
   });
 
-  it('accepts "code-api" explicitly', () => {
+  it('accepts "code-api"', () => {
     process.env.JIRA_TOOL_MODE = "code-api";
     expect(getConfig().toolMode).toBe("code-api");
   });

@@ -12,12 +12,16 @@ config({ path: ".env.local", override: true });
 export type TokenType = "scoped" | "classic";
 
 // v2 tool surface modes:
-// - "code-api": (default) expose a single `jira_code_api` MCP tool that
-//   points at on-disk TypeScript stubs the agent imports via tsx. Most
-//   token-efficient — ~500 tokens for the tool listing.
-// - "classic": expose the 16 consolidated MCP tools. Keeps the
-//   request/response shape v1 users are used to. ~3-4k tokens for the
-//   tool listing.
+// - "classic": (default) expose the 16 consolidated MCP tools. Same
+//   request/response shape v1 users are used to, with v2's trim/sandbox
+//   on the response side. The default for v2.0 because per-call cost is
+//   on par with code-api once list endpoints are trimmed (PR #180), and
+//   it skips the agent-side `JIRA_MCP_SOCKET=… npx tsx -e '…'` dance.
+// - "code-api": expose a single `jira_code_api` MCP tool that points at
+//   on-disk TypeScript stubs the agent imports via tsx. Smallest
+//   tool-list cost (~95 tokens vs ~7,800 for classic), at the cost of
+//   per-call complexity. Useful for sessions that do many composed
+//   queries (jq filters, multi-call investigations).
 export type ToolMode = "code-api" | "classic";
 
 export interface JiraConfig {
@@ -43,10 +47,10 @@ function detectTokenType(token: string): TokenType {
 }
 
 function parseToolMode(raw: string | undefined): ToolMode {
-  if (raw === undefined || raw === "") return "code-api";
+  if (raw === undefined || raw === "") return "classic";
   if (raw === "classic" || raw === "code-api") return raw;
   throw new Error(
-    `Invalid JIRA_TOOL_MODE=${raw}. Expected "code-api" (default) or "classic".`,
+    `Invalid JIRA_TOOL_MODE=${raw}. Expected "classic" (default) or "code-api".`,
   );
 }
 
@@ -71,7 +75,7 @@ export function getConfig(): JiraConfig {
         "  JIRA_EMAIL    - Your Atlassian account email\n" +
         "  JIRA_API_TOKEN - API token from https://id.atlassian.com/manage-profile/security/api-tokens\n" +
         "  JIRA_CLOUD_ID  - (Optional) Cloud ID for scoped tokens, will be auto-fetched if not provided\n" +
-        "  JIRA_TOOL_MODE - (Optional) 'code-api' (default) or 'classic'"
+        "  JIRA_TOOL_MODE - (Optional) 'classic' (default) or 'code-api'"
     );
   }
 
