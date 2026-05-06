@@ -1,6 +1,5 @@
 import * as fs from "node:fs/promises";
 import * as net from "node:net";
-import * as path from "node:path";
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -51,32 +50,20 @@ afterEach(async () => {
 // --- Tests -----------------------------------------------------------
 
 describe("bootCodeApi", () => {
-  it("generates stubs, starts the bridge, and publishes JIRA_MCP_SOCKET", async () => {
+  it("starts the bridge and publishes JIRA_MCP_SOCKET", async () => {
+    // boot no longer generates stubs per session — the api/ ships
+    // statically (built by scripts/build-api.ts at npm run build
+    // time). This test only asserts the lifecycle pieces boot still
+    // owns: bridge startup + env var publication + apiDir threading.
     const client = makeMockClient();
-    const apiDir = path.join(sessionCacheDir(), "api");
+    const apiDir = "/tmp/test-api-dir-not-actually-read-here";
     const booted = await bootCodeApi({
       client,
       apiDir,
       cleanupSessions: false,
     });
     try {
-      // Generator output landed where the context says it did.
       expect(booted.ctx.apiDir).toBe(apiDir);
-      const stub = await fs.readFile(
-        path.join(apiDir, "issue", "get.ts"),
-        "utf8",
-      );
-      expect(stub).toContain('return invoke("issue.get", args);');
-
-      // The root index re-exports namespaces — confirms the
-      // generator's full plan ran (not just the first stub).
-      const rootIndex = await fs.readFile(
-        path.join(apiDir, "index.ts"),
-        "utf8",
-      );
-      expect(rootIndex).toContain("export * as issue from");
-
-      // Bridge is up and the address was published to the env.
       expect(booted.bridge.address).toBeTruthy();
       expect(booted.ctx.socketAddress).toBe(booted.bridge.address);
       expect(process.env.JIRA_MCP_SOCKET).toBe(booted.bridge.address);
@@ -164,17 +151,16 @@ describe("bootCodeApi", () => {
     }
   });
 
-  it("respects the apiDir override (used in tests + power-user setups)", async () => {
+  it("defaults apiDir to build/api when not overridden", async () => {
     const client = makeMockClient();
-    const apiDir = path.join(sessionCacheDir(), "custom-api-location");
-    const booted = await bootCodeApi({
-      client,
-      apiDir,
-      cleanupSessions: false,
-    });
+    const booted = await bootCodeApi({ client, cleanupSessions: false });
     try {
-      await fs.access(path.join(apiDir, "index.ts"));
-      expect(booted.ctx.apiDir).toBe(apiDir);
+      // The default points at this build's static api/ directory,
+      // resolved relative to boot.js. We don't assert it exists on
+      // disk here (depends on npm run build having run), only that
+      // the path shape is correct.
+      expect(booted.ctx.apiDir).toMatch(/[/\\]api$/);
+      expect(booted.ctx.apiDir).not.toContain(sessionCacheDir());
     } finally {
       await booted.bridge.close();
     }

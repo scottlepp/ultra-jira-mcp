@@ -209,17 +209,30 @@ export function renderRootIndex(categories: string[]): string {
 
 // --- Static support files ----------------------------------------------
 
-// types.ts — re-exports the Ref shape from the runtime project so
-// the stubs don't carry a copy. Generated stubs live outside the
-// repo root; they import via absolute path resolved at generate
-// time (see generator.ts which writes the resolved path in).
-export function renderTypesFile(refsImportPath: string): string {
+// types.ts — inlines the Ref / SandboxResult shape directly so the
+// generated API has no dependency on the host install layout. Earlier
+// versions re-exported these from the running jira-mcp build via an
+// absolute path embedded at generate time, which forced runtime
+// codegen. Inlining lets us ship a static api/ directory in the
+// package and skip generation per session.
+//
+// Keep this in sync with src/types/refs.ts. The shapes are simple
+// (5 primitive fields) and rarely change; a generator test asserts
+// the inlined shape stays compatible.
+export function renderTypesFile(): string {
   return (
     `${GENERATED_BANNER}\n\n` +
-    `// Re-exports the Ref<T> shape from the running jira-mcp build,\n` +
-    `// so generated stubs can stay independent of the user's tsconfig\n` +
-    `// while still typing responses correctly.\n` +
-    `export type { Ref, SandboxResult } from ${JSON.stringify(refsImportPath)};\n`
+    `// Inlined from src/types/refs.ts. Self-contained so generated\n` +
+    `// stubs work in any execution context without resolving back to\n` +
+    `// the jira-mcp install.\n` +
+    `export interface SandboxResult<TSummary> {\n` +
+    `  summary: TSummary;\n` +
+    `  ref: string;\n` +
+    `  hash: string;\n` +
+    `  fullSize: number;\n` +
+    `  fetchedAt: string;\n` +
+    `}\n\n` +
+    `export type Ref<TSummary> = SandboxResult<TSummary>;\n`
   );
 }
 

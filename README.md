@@ -104,11 +104,11 @@ For the full v1-vs-v2 picture (per-call cost, three scenarios, ratios) see [docs
 
 ### code-api mode (advanced)
 
-Set `JIRA_TOOL_MODE=code-api` to expose a single MCP tool, `jira_code_api`. Calling it returns a path to a generated TypeScript API on disk and a usage example. The agent then drives Jira from a shell using tsx:
+Set `JIRA_TOOL_MODE=code-api` to expose a single MCP tool, `jira_code_api`. Calling it returns the path to the package's pre-built TypeScript API and a usage example. The agent then drives Jira from a shell using tsx:
 
 ```bash
 JIRA_MCP_SOCKET=/tmp/jira-mcp/${session}/ipc.sock npx tsx -e '
-  import * as jira from "/tmp/jira-mcp/${session}/api/index.js";
+  import * as jira from "<apiDir>/index.js";  // <apiDir> comes from the jira_code_api response
   const issue = await jira.issue.get({ issueIdOrKey: "PROJ-1" });
   console.log(issue.summary.status);
 '

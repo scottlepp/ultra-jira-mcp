@@ -7,11 +7,12 @@
 //     `jira_issue` takes `{ action, ...args }` and dispatches through
 //     `invokeOperation` against the manifest entry whose name matches.
 //
-//   - Layer 3 (code-api stubs, PR #8): on server startup we emit one
-//     TypeScript file per operation under `${sessionCacheDir}/api/…`.
+//   - Layer 3 (code-api stubs): at `npm run build` time the generator
+//     emits one TypeScript file per operation under `build/api/…`.
 //     Each stub is ~20 lines — a typed signature + a thin body that
 //     forwards to the running server via the local IPC bridge. The
-//     generator walks the manifest to produce these.
+//     resulting api/ directory ships in the npm package; per-session
+//     uniqueness is handled at runtime by `JIRA_MCP_SOCKET`.
 //
 // The manifest is deliberately stringly-typed: operations declare
 // their params by name + role (path/query/body), not by a static

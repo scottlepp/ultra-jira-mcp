@@ -1,14 +1,16 @@
-// Code-API generator (Layer 3, PR #8).
+// Code-API generator.
 //
 // Walks the manifest and emits one TypeScript stub per operation
-// under `${outDir}/api/`. Output is deterministic: same manifest +
+// under `${outDir}/`. Output is deterministic: same manifest +
 // same outDir = byte-identical files. That property lets us
-// golden-snapshot the result in tests and lets the runtime skip
-// regeneration when the manifest hasn't changed.
+// golden-snapshot the result in tests.
 //
-// PR #9 will plug a real IPC bridge into the emitted `_client.ts`.
-// PR #10 will call `generateApi()` from the MCP server's startup
-// path, pointing outDir at the session cache directory.
+// Run at npm run build time by scripts/build-api.ts; the resulting
+// build/api/ directory ships in the npm package and is what
+// code-api mode hands to the agent at runtime. Earlier versions
+// generated per session at MCP-server startup; that's no longer
+// necessary now that types.ts is self-contained (no install-path
+// dependency).
 
 import * as fsp from "node:fs/promises";
 import * as path from "node:path";
@@ -28,20 +30,8 @@ export interface GenerateApiOptions {
   manifest: Manifest;
   // Directory to emit into. Created (recursively) if absent. Existing
   // files are overwritten; stale files from a previous run are NOT
-  // pruned (deferred to PR #10 where we own the lifecycle).
+  // pruned — callers that need a clean slate should rm the dir first.
   outDir: string;
-  // Module specifier the generated `types.ts` imports `Ref` from.
-  // Resolution happens in the agent's execution context, NOT here, so
-  // the caller must pass a value that resolves *from the stubs' final
-  // location*. Two common shapes:
-  //   - bare specifier (e.g. "jira-mcp/build/types/refs.js") only
-  //     works if the agent's working dir has jira-mcp on its node
-  //     module path
-  //   - absolute path (e.g. "/usr/local/lib/.../build/types/refs.js")
-  //     always works but is install-specific
-  // PR #10 owns picking the right value at server-startup time;
-  // there's no safe default the generator can synthesize on its own.
-  refsImportPath: string;
 }
 
 export interface GeneratedFile {
@@ -82,10 +72,7 @@ export interface PlannedFile {
   contents: string;
 }
 
-export function planApi(
-  manifest: Manifest,
-  refsImportPath: string,
-): PlannedFile[] {
+export function planApi(manifest: Manifest): PlannedFile[] {
   const groups = groupByCategory(manifest);
   const out: PlannedFile[] = [];
 
@@ -94,7 +81,7 @@ export function planApi(
   out.push({ relativePath: "_client.ts", contents: renderClientFile() });
   out.push({
     relativePath: "types.ts",
-    contents: renderTypesFile(refsImportPath),
+    contents: renderTypesFile(),
   });
   out.push({
     relativePath: "index.ts",
@@ -141,7 +128,7 @@ export function planApi(
 export async function generateApi(
   opts: GenerateApiOptions,
 ): Promise<GenerateApiResult> {
-  const planned = planApi(opts.manifest, opts.refsImportPath);
+  const planned = planApi(opts.manifest);
 
   const written: GeneratedFile[] = [];
   // Create directories breadth-first so we don't redundantly mkdir for

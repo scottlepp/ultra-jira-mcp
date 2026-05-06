@@ -19,11 +19,6 @@ import {
 
 // --- Fixture manifest --------------------------------------------------
 
-// Stand-in for the refsImportPath the runtime will pass at server
-// startup. Tests don't actually try to resolve this — the generator
-// just embeds it in `types.ts`.
-const TEST_REFS_IMPORT = "test:refs";
-
 // Tiny synthetic manifest used by the structural tests so we don't
 // have to update them every time a real operation is added. The real
 // manifest is exercised by the integration test at the bottom.
@@ -242,11 +237,20 @@ describe("renderClientFile", () => {
 });
 
 describe("renderTypesFile", () => {
-  it("re-exports Ref from the configured import path", () => {
-    const out = renderTypesFile("/abs/build/types/refs.js");
-    expect(out).toContain(
-      'export type { Ref, SandboxResult } from "/abs/build/types/refs.js";',
-    );
+  it("inlines the Ref / SandboxResult shape so the api is self-contained", () => {
+    const out = renderTypesFile();
+    // The shape is inlined as a literal interface — no import path,
+    // no install dependency. This is what lets the api/ ship statically.
+    expect(out).toContain("export interface SandboxResult<TSummary>");
+    expect(out).toContain("summary: TSummary;");
+    expect(out).toContain("ref: string;");
+    expect(out).toContain("hash: string;");
+    expect(out).toContain("fullSize: number;");
+    expect(out).toContain("fetchedAt: string;");
+    expect(out).toContain("export type Ref<TSummary> = SandboxResult<TSummary>;");
+    // Crucially: no `from "..."` import — that's what forced runtime
+    // codegen previously.
+    expect(out).not.toContain('from "');
   });
 });
 
@@ -254,7 +258,7 @@ describe("renderTypesFile", () => {
 
 describe("planApi", () => {
   it("plans every operation plus support files, in deterministic order", () => {
-    const plan = planApi(fixtureManifest, TEST_REFS_IMPORT);
+    const plan = planApi(fixtureManifest);
     const paths = plan.map((p) => p.relativePath);
 
     expect(paths).toContain("_client.ts");
@@ -271,7 +275,7 @@ describe("planApi", () => {
   });
 
   it("plans the real manifest without throwing and covers every operation", () => {
-    const plan = planApi(operations, TEST_REFS_IMPORT);
+    const plan = planApi(operations);
     const stubPaths = plan
       .map((p) => p.relativePath)
       .filter((p) => p !== "_client.ts" && p !== "types.ts" && p !== "index.ts")
@@ -301,7 +305,7 @@ describe("planApi", () => {
         params: [{ name: "id", role: "path", required: true }],
       },
     ];
-    expect(() => planApi(collidingManifest, TEST_REFS_IMPORT)).toThrow(
+    expect(() => planApi(collidingManifest)).toThrow(
       /would overwrite stub for 'issue\.get'/,
     );
   });
@@ -316,7 +320,7 @@ describe("planApi", () => {
         params: [{ name: "id", role: "path", required: true }],
       },
     ];
-    const plan = planApi(reservedManifest, TEST_REFS_IMPORT);
+    const plan = planApi(reservedManifest);
     const stub = plan.find((p) => p.relativePath === "thing/delete.ts");
     const index = plan.find((p) => p.relativePath === "thing/index.ts");
     expect(stub?.contents).toContain("export function delete_(");
@@ -349,14 +353,11 @@ describe("generateApi", () => {
     const result = await generateApi({
       manifest: fixtureManifest,
       outDir,
-      refsImportPath: TEST_REFS_IMPORT,
     });
 
     expect(result.operationCount).toBe(fixtureManifest.length);
     expect(result.categories.sort()).toEqual(["board", "issue", "server"]);
-    expect(result.files.length).toBe(
-      planApi(fixtureManifest, TEST_REFS_IMPORT).length,
-    );
+    expect(result.files.length).toBe(planApi(fixtureManifest).length);
 
     // Spot-check a few of the actual files on disk.
     const issueGet = await fs.readFile(
@@ -371,17 +372,18 @@ describe("generateApi", () => {
     );
     expect(rootIndex).toContain("export * as issue from");
 
-    // types.ts uses the configured import path — verifies refsImportPath
-    // is plumbed end-to-end through generateApi.
+    // types.ts is now self-contained — inlines Ref/SandboxResult
+    // instead of re-exporting from an install-specific path. This is
+    // what lets us ship build/api/ statically.
     const types = await fs.readFile(path.join(outDir, "types.ts"), "utf8");
-    expect(types).toContain(`from "${TEST_REFS_IMPORT}"`);
+    expect(types).toContain("export interface SandboxResult<TSummary>");
+    expect(types).not.toContain('from "');
   });
 
   it("is idempotent across consecutive runs", async () => {
     const first = await generateApi({
       manifest: fixtureManifest,
       outDir,
-      refsImportPath: TEST_REFS_IMPORT,
     });
     const firstSnapshot: Record<string, string> = {};
     for (const f of first.files) {
@@ -391,7 +393,6 @@ describe("generateApi", () => {
     const second = await generateApi({
       manifest: fixtureManifest,
       outDir,
-      refsImportPath: TEST_REFS_IMPORT,
     });
     expect(second.files.length).toBe(first.files.length);
     for (const f of second.files) {
@@ -405,7 +406,6 @@ describe("generateApi", () => {
     const result = await generateApi({
       manifest: operations,
       outDir,
-      refsImportPath: TEST_REFS_IMPORT,
     });
     expect(result.operationCount).toBe(operations.length);
 
