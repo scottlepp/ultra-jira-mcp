@@ -61,17 +61,27 @@ export function buildCodeApiToolResponse(
   // snippet under esbuild's CJS target by default, where top-level
   // await is illegal. The IIFE keeps the snippet portable across
   // every cwd / package.json layout the agent might run in.
+  // The discovery hint, common-ops list, and subtask note exist
+  // because real first-use sessions burned 4-5 calls guessing at the
+  // wrong endpoint names ("searchAndReconsileIssuesUsingJql") and
+  // wrong subtask strategies ("issueLinkType = has subtask"). The
+  // function shape is `jira.<resource>.<operation>` — `ls` the apiDir
+  // for resources, then read the operation file's *Args interface.
   const usage = [
-    `# Run in your shell (tsx required). The JIRA_MCP_SOCKET prefix is`,
-    `# load-bearing — child shells don't inherit the MCP server's env.`,
+    `# tsx required. JIRA_MCP_SOCKET prefix is load-bearing — child`,
+    `# shells don't inherit the MCP server's env.`,
     `JIRA_MCP_SOCKET=${ctx.socketAddress} npx tsx -e '`,
     `import * as jira from "${ctx.apiDir}/index.js";`,
+    `import { readFile } from "fs/promises";`,
     `(async () => {`,
-    `  const issue = await jira.issue.get({ issueIdOrKey: "PROJ-1" });`,
-    `  console.log(issue.summary.status);  // trimmed projection — free to inspect`,
-    `  // issue.ref points at the full JSON; read it with fs.readFile when you need detail.`,
-    `})();`,
-    `'`,
+    `  const r = await jira.issue.get({ issueIdOrKey: "PROJ-1" });`,
+    `  console.log(r.summary);  // trimmed projection`,
+    `  const full = JSON.parse(await readFile(r.ref, "utf8"));`,
+    `})();'`,
+    `# Shape: jira.<resource>.<op>. ls apiDir for resources, then`,
+    `# read <resource>/<op>.ts for the *Args interface. Common ops:`,
+    `# issue.{get,create,update,transition}, search.issues, comment.*.`,
+    `# Subtasks: use \`parent = KEY\` JQL, not "has subtask" link type.`,
   ].join("\n");
 
   return {

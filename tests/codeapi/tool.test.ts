@@ -37,6 +37,11 @@ describe("buildCodeApiToolResponse", () => {
     expect(out.usage).toContain("issue.get");
     expect(out.usage).toContain(".summary");
     expect(out.usage).toContain(".ref");
+    // Discovery hint + common ops + subtasks gotcha — these exist
+    // because first-use sessions burned multiple calls guessing at
+    // endpoint names and the wrong subtask strategy.
+    expect(out.usage).toContain("search.issues");
+    expect(out.usage).toContain("parent = KEY");
     // Regression: tsx -e transforms the snippet under esbuild's CJS
     // target by default, where top-level await is illegal. Wrap in
     // an async IIFE so the snippet runs from any cwd. The check below
