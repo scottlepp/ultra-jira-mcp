@@ -88,7 +88,19 @@ function requireEnv(): BenchEnv {
 
 // --- MCP server lifecycle --------------------------------------------
 
-type Mode = "classic" | "code-api";
+type Mode = "v1" | "classic" | "code-api";
+
+// v1 lives on `main`; we measure it from a sibling git worktree
+// checked out at the v1.0.0 tag. The script doesn't manage the
+// worktree — set it up once with:
+//   git worktree add ../jira-mcp-v1 v1.0.0
+//   (cd ../jira-mcp-v1 && npm install && npm run build)
+const V1_WORKTREE = path.resolve(
+  path.dirname(fileURLToPath(import.meta.url)),
+  "..",
+  "..",
+  "jira-mcp-v1",
+);
 
 interface Connection {
   client: Client;
@@ -100,14 +112,20 @@ interface Connection {
 
 async function connect(mode: Mode, env: BenchEnv): Promise<Connection> {
   const here = path.dirname(fileURLToPath(import.meta.url));
-  const serverEntry = path.resolve(here, "..", "build", "index.js");
+  const serverEntry =
+    mode === "v1"
+      ? path.resolve(V1_WORKTREE, "build", "index.js")
+      : path.resolve(here, "..", "build", "index.js");
 
+  // v1 doesn't read JIRA_TOOL_MODE; passing it is harmless. Sessions
+  // are unused in v1 (no sandbox), but we keep the same env shape so
+  // the spawn paths stay symmetric.
   const transport = new StdioClientTransport({
     command: "node",
     args: [serverEntry],
     env: {
       ...env,
-      JIRA_TOOL_MODE: mode,
+      JIRA_TOOL_MODE: mode === "v1" ? "" : mode,
       MCP_SESSION_ID: `bench-${mode}-${Date.now()}`,
       // Forward PATH so the server can spawn child processes if it
       // ever needs to (it doesn't today, but cheap insurance).
@@ -287,14 +305,22 @@ function invokeOverBridge(
 
 interface Scenario {
   name: string;
+  v1Calls: { tool: string; args: Record<string, unknown> }[];
   classicCalls: { tool: string; args: Record<string, unknown> }[];
   codeApiCalls: { operation: string; args: Record<string, unknown> }[];
 }
 
 function buildScenarios(env: BenchEnv): Scenario[] {
+  const jql = "assignee = currentUser() ORDER BY updated DESC";
   return [
     {
       name: "fetch 1 simple ticket",
+      v1Calls: [
+        {
+          tool: "jira_get_issue",
+          args: { issueIdOrKey: env.JIRA_BENCH_TICKET_SIMPLE },
+        },
+      ],
       classicCalls: [
         {
           tool: "jira_issue",
@@ -310,6 +336,22 @@ function buildScenarios(env: BenchEnv): Scenario[] {
     },
     {
       name: "investigate rich ticket",
+      v1Calls: [
+        {
+          tool: "jira_get_issue",
+          args: {
+            issueIdOrKey: env.JIRA_BENCH_TICKET_RICH,
+            expand: "renderedFields,comments,attachment",
+          },
+        },
+        {
+          tool: "jira_get_comments",
+          args: {
+            issueIdOrKey: env.JIRA_BENCH_TICKET_RICH,
+            maxResults: 100,
+          },
+        },
+      ],
       classicCalls: [
         {
           tool: "jira_issue",
@@ -347,12 +389,26 @@ function buildScenarios(env: BenchEnv): Scenario[] {
     },
     {
       name: "JQL search ~10 tickets",
+      v1Calls: [
+        // v1's jira_search_issues returns full issue payloads by default.
+        // We pass the same `fields` filter v2 uses so the comparison is
+        // strictly about projection/trim, not about asking v1 for a
+        // larger payload than v2.
+        {
+          tool: "jira_search_issues",
+          args: {
+            jql,
+            maxResults: 10,
+            fields: ["summary", "status", "assignee", "priority", "updated"],
+          },
+        },
+      ],
       classicCalls: [
         {
           tool: "jira_search",
           args: {
             action: "issues",
-            jql: "assignee = currentUser() ORDER BY updated DESC",
+            jql,
             maxResults: 10,
             // The new /search/jql endpoint returns bare issue refs
             // unless `fields` is requested. Both modes need the same
@@ -365,7 +421,7 @@ function buildScenarios(env: BenchEnv): Scenario[] {
         {
           operation: "search.issues",
           args: {
-            jql: "assignee = currentUser() ORDER BY updated DESC",
+            jql,
             maxResults: 10,
             fields: "summary,status,assignee,priority,updated",
           },
@@ -377,15 +433,36 @@ function buildScenarios(env: BenchEnv): Scenario[] {
 
 interface ScenarioResult {
   name: string;
+  v1Bytes: number;
   classicBytes: number;
   codeApiSummaryBytes: number;
   codeApiFullBytes: number;
 }
 
-async function runScenarios(
-  env: BenchEnv,
-): Promise<{ results: ScenarioResult[]; classicToolList: number; codeApiToolList: number }> {
+async function runScenarios(env: BenchEnv): Promise<{
+  results: ScenarioResult[];
+  v1ToolList: number;
+  classicToolList: number;
+  codeApiToolList: number;
+}> {
   const scenarios = buildScenarios(env);
+
+  // --- v1 pass (separate worktree at v1.0.0 tag) ---
+  const v1 = await connect("v1", env);
+  const v1ToolList = v1.toolListBytes;
+  const v1Totals = new Map<string, number>();
+  try {
+    for (const s of scenarios) {
+      let total = 0;
+      for (const c of s.v1Calls) {
+        const cost = await classicCallCost(v1.client, c.tool, c.args);
+        total += cost.responseBytes;
+      }
+      v1Totals.set(s.name, total);
+    }
+  } finally {
+    await disconnect(v1);
+  }
 
   // --- Classic mode pass ---
   const classic = await connect("classic", env);
@@ -434,11 +511,12 @@ async function runScenarios(
 
   const results: ScenarioResult[] = scenarios.map((s) => ({
     name: s.name,
+    v1Bytes: v1Totals.get(s.name) ?? 0,
     classicBytes: classicTotals.get(s.name) ?? 0,
     codeApiSummaryBytes: codeApiSummary.get(s.name) ?? 0,
     codeApiFullBytes: codeApiFull.get(s.name) ?? 0,
   }));
-  return { results, classicToolList, codeApiToolList };
+  return { results, v1ToolList, classicToolList, codeApiToolList };
 }
 
 // --- Reporting --------------------------------------------------------
@@ -462,45 +540,48 @@ function tokens(bytes: number): number {
 }
 
 function renderReport(
+  v1ToolList: number,
   classicToolList: number,
   codeApiToolList: number,
   results: ScenarioResult[],
 ): string {
   const lines: string[] = [];
-  lines.push("# jira-mcp v2 token budget benchmark");
+  lines.push("# jira-mcp token budget benchmark");
   lines.push("");
   lines.push(
     "Bytes of MCP request/response that would land in the agent's context window.",
   );
   lines.push(
-    "Token estimates use bytes/4 (close enough for the v2-vs-v2 comparison).",
+    "Token estimates use bytes/4 (close enough across Anthropic and OpenAI tokenizers).",
   );
   lines.push("");
   lines.push("## Tool-list cost (one-time, at startup)");
   lines.push("");
-  lines.push("| mode        | bytes | ~tokens |");
-  lines.push("| ----------- | ----- | ------- |");
-  lines.push(`| classic     | ${fmt(classicToolList)} | ${tokens(classicToolList)} |`);
-  lines.push(`| code-api    | ${fmt(codeApiToolList)} | ${tokens(codeApiToolList)} |`);
+  lines.push("| mode           | bytes | ~tokens |");
+  lines.push("| -------------- | ----- | ------- |");
+  lines.push(`| v1             | ${fmt(v1ToolList)} | ${tokens(v1ToolList)} |`);
+  lines.push(`| v2 classic     | ${fmt(classicToolList)} | ${tokens(classicToolList)} |`);
+  lines.push(`| v2 code-api    | ${fmt(codeApiToolList)} | ${tokens(codeApiToolList)} |`);
   lines.push("");
-  lines.push(`code-api vs classic: ${ratio(codeApiToolList, classicToolList)}`);
+  lines.push(`v2 classic vs v1: ${ratio(classicToolList, v1ToolList)}`);
+  lines.push(`v2 code-api vs v1: ${ratio(codeApiToolList, v1ToolList)}`);
   lines.push("");
   lines.push("## Per-flow cost");
   lines.push("");
-  lines.push("`code-api summary` = agent reads only the inline summary.");
-  lines.push("`code-api +full` = agent also reads every ref file (upper bound).");
+  lines.push("`v2 code-api summary` = agent reads only the inline summary.");
+  lines.push("`v2 code-api +full` = agent also reads every ref file (upper bound).");
   lines.push("");
   lines.push(
-    "| scenario | classic | code-api summary | code-api +full | summary vs classic |",
+    "| scenario | v1 | v2 classic | v2 code-api summary | v2 code-api +full | classic vs v1 |",
   );
   lines.push(
-    "| -------- | ------- | ---------------- | -------------- | ------------------ |",
+    "| -------- | -- | ---------- | ------------------- | ----------------- | ------------- |",
   );
   for (const r of results) {
     lines.push(
-      `| ${r.name} | ${fmt(r.classicBytes)} | ${fmt(r.codeApiSummaryBytes)} | ${fmt(
-        r.codeApiFullBytes,
-      )} | ${ratio(r.codeApiSummaryBytes, r.classicBytes)} |`,
+      `| ${r.name} | ${fmt(r.v1Bytes)} | ${fmt(r.classicBytes)} | ${fmt(
+        r.codeApiSummaryBytes,
+      )} | ${fmt(r.codeApiFullBytes)} | ${ratio(r.classicBytes, r.v1Bytes)} |`,
     );
   }
   return lines.join("\n");
@@ -525,9 +606,23 @@ async function main(): Promise<void> {
     );
   }
 
-  const { classicToolList, codeApiToolList, results } = await runScenarios(env);
+  const v1Entry = path.resolve(V1_WORKTREE, "build", "index.js");
+  try {
+    await fs.access(v1Entry);
+  } catch {
+    throw new Error(
+      `v1 server entry not found at ${v1Entry}. Set up the worktree once with:\n` +
+        `  git worktree add ${V1_WORKTREE} v1.0.0\n` +
+        `  (cd ${V1_WORKTREE} && npm install && npm run build)`,
+    );
+  }
+
+  const { v1ToolList, classicToolList, codeApiToolList, results } =
+    await runScenarios(env);
   // eslint-disable-next-line no-console
-  console.log(renderReport(classicToolList, codeApiToolList, results));
+  console.log(
+    renderReport(v1ToolList, classicToolList, codeApiToolList, results),
+  );
 }
 
 void (async () => {
