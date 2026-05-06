@@ -59,7 +59,7 @@ For agents using Claude/Claude Code: nothing to do — Claude reads the new shap
 { "id": "10001", "key": "PROJ-1", "fields": { "summary": "...", "status": {...}, "comment": { "comments": [...] }, ... } }
 ```
 
-**v2 classic response (the default — what `jira_issue` etc. return through MCP):** the trim projection directly. No envelope, no `ref`. The full untrimmed body is *not* written to disk in classic mode.
+**v2 classic response (the default — what `jira_issue` etc. return through MCP):** the trim projection directly. No envelope, no `ref`. The full untrimmed body is *not* written to disk in classic mode, so the trim is content-preserving by default — full description, full comment bodies, all subtasks/issuelinks/attachments — and any further escape hatch comes from `full: true` (see below).
 
 ```json
 {
@@ -70,16 +70,30 @@ For agents using Claude/Claude Code: nothing to do — Claude reads the new shap
   "assignee": { "accountId": "...", "displayName": "..." },
   "priority": "High",
   "labels": [],
-  "descriptionPreview": "...",
-  "descriptionTruncated": false,
+  "description": "Full plain-text description...",
+  "parent": { "id": "5", "key": "PROJ-5", "summary": "Parent epic" },
+  "subtasks": [{ "id": "11", "key": "PROJ-11", "summary": "..." }],
+  "issuelinks": [
+    { "id": "L1", "type": "Blocks", "direction": "outward", "relationship": "blocks", "issue": { "key": "PROJ-2", "summary": "..." } }
+  ],
   "commentCount": 26,
-  "recentComments": [...],
+  "comments": [{ "id": "c1", "author": {...}, "created": "...", "updated": "...", "body": "Full comment body" }],
   "attachmentCount": 2,
   "attachments": [...]
 }
 ```
 
-Field names are stable across versions, so anything reading `result.key` / `result.status` keeps working with a smaller payload. List endpoints (e.g. `jira_comment.list`) return `{total, startAt, maxResults, truncated}` only — no inline items; rerun the call with different paging or use a more specific tool when you need the rows.
+Most field names match v1 (`key`, `status`, `summary`, `assignee`, `labels`, `attachments`). Two are new shapes for content that v1 returned as raw ADF: `description` (plain text), and `comments[].body` (plain text). The trim never adds an envelope or hash — what you see is what you get.
+
+Need the raw Jira API response (e.g. ADF tree, custom fields not in the trim, or fields a future Jira version adds before this MCP catches up)? Pass `full: true` on any consolidated tool call:
+
+```json
+{ "action": "get", "issueIdOrKey": "PROJ-1", "full": true }
+```
+
+This bypasses the trim and returns whatever Jira sent back. Works on every action; on actions without a trim it's a no-op.
+
+List endpoints (e.g. `jira_comment.list`, `jira_board.issues`) still return `{total, startAt, maxResults, truncated}` only — no inline items by default. Use `full: true` to get the rows inline, or rerun the call with different paging.
 
 **v2 code-api response (only when `JIRA_TOOL_MODE=code-api`):** a `SandboxResult` envelope. Each call returns the trimmed projection in `summary` and a filesystem path to the full untrimmed body in `ref`.
 
