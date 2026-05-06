@@ -56,14 +56,21 @@ export function buildCodeApiToolResponse(
   // process. So the snippet must export JIRA_MCP_SOCKET inline rather
   // than assume it's already set. tsx is the recommended runner — it
   // executes the .ts stubs directly.
+  //
+  // The body wraps in an async IIFE because `tsx -e` transforms the
+  // snippet under esbuild's CJS target by default, where top-level
+  // await is illegal. The IIFE keeps the snippet portable across
+  // every cwd / package.json layout the agent might run in.
   const usage = [
     `# Run in your shell (tsx required). The JIRA_MCP_SOCKET prefix is`,
     `# load-bearing — child shells don't inherit the MCP server's env.`,
     `JIRA_MCP_SOCKET=${ctx.socketAddress} npx tsx -e '`,
     `import * as jira from "${ctx.apiDir}/index.js";`,
-    `const issue = await jira.issue.get({ issueIdOrKey: "PROJ-1" });`,
-    `console.log(issue.summary.status);  // trimmed projection — free to inspect`,
-    `// issue.ref points at the full JSON; read it with fs.readFile when you need detail.`,
+    `(async () => {`,
+    `  const issue = await jira.issue.get({ issueIdOrKey: "PROJ-1" });`,
+    `  console.log(issue.summary.status);  // trimmed projection — free to inspect`,
+    `  // issue.ref points at the full JSON; read it with fs.readFile when you need detail.`,
+    `})();`,
     `'`,
   ].join("\n");
 

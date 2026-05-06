@@ -37,6 +37,13 @@ describe("buildCodeApiToolResponse", () => {
     expect(out.usage).toContain("issue.get");
     expect(out.usage).toContain(".summary");
     expect(out.usage).toContain(".ref");
+    // Regression: tsx -e transforms the snippet under esbuild's CJS
+    // target by default, where top-level await is illegal. Wrap in
+    // an async IIFE so the snippet runs from any cwd. The check below
+    // ensures any `await` lives inside the IIFE (indented), not at
+    // column 0 of the snippet body.
+    expect(out.usage).toContain("(async () =>");
+    expect(out.usage).not.toMatch(/^const \w+ = await/m);
   });
 
   it("prefixes the runner invocation with JIRA_MCP_SOCKET=<addr>", () => {

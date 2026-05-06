@@ -289,9 +289,11 @@ Source of truth: every v1 tool name in v1's README, mapped to its v2 equivalent.
 ```bash
 JIRA_MCP_SOCKET=/tmp/jira-mcp/${session}/ipc.sock npx tsx -e '
   import * as jira from "<apiDir>/index.js";  // <apiDir> is returned by jira_code_api
-  const issue = await jira.issue.get({ issueIdOrKey: "PROJ-1" });
-  console.log(issue.summary.status);
-  // issue.ref is an absolute path to the full JSON; read it with fs when needed.
+  (async () => {
+    const issue = await jira.issue.get({ issueIdOrKey: "PROJ-1" });
+    console.log(issue.summary.status);
+    // issue.ref is an absolute path to the full JSON; read it with fs when needed.
+  })();
 '
 ```
 

@@ -109,8 +109,10 @@ Set `JIRA_TOOL_MODE=code-api` to expose a single MCP tool, `jira_code_api`. Call
 ```bash
 JIRA_MCP_SOCKET=/tmp/jira-mcp/${session}/ipc.sock npx tsx -e '
   import * as jira from "<apiDir>/index.js";  // <apiDir> comes from the jira_code_api response
-  const issue = await jira.issue.get({ issueIdOrKey: "PROJ-1" });
-  console.log(issue.summary.status);
+  (async () => {
+    const issue = await jira.issue.get({ issueIdOrKey: "PROJ-1" });
+    console.log(issue.summary.status);
+  })();
 '
 ```
 
