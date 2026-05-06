@@ -30,10 +30,15 @@ describe("buildCodeApiToolResponse", () => {
       socketAddress: "/tmp/jira-mcp/abc/ipc.sock",
     });
     expect(out.apiDir).toBe("/tmp/jira-mcp/abc/api");
-    expect(out.rootIndex).toBe("/tmp/jira-mcp/abc/api/index.js");
+    // Regression: rootIndex must point at index.ts, not index.js. The
+    // generator only writes .ts files, and tsx's .js → .ts rewrite is
+    // skipped for paths under /node_modules/ when run inside a TS
+    // project — so advertising .js fails for the common install layout
+    // (~/.npm/_npx/.../node_modules/jira-mcp/build/api/).
+    expect(out.rootIndex).toBe("/tmp/jira-mcp/abc/api/index.ts");
     expect(out.socketEnv).toBe("JIRA_MCP_SOCKET");
     expect(out.socketAddress).toBe("/tmp/jira-mcp/abc/ipc.sock");
-    expect(out.usage).toContain('import * as jira from "/tmp/jira-mcp/abc/api/index.js"');
+    expect(out.usage).toContain('import * as jira from "/tmp/jira-mcp/abc/api/index.ts"');
     expect(out.usage).toContain("issue.get");
     expect(out.usage).toContain(".summary");
     expect(out.usage).toContain(".ref");

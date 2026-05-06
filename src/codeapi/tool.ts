@@ -67,11 +67,19 @@ export function buildCodeApiToolResponse(
   // wrong subtask strategies ("issueLinkType = has subtask"). The
   // function shape is `jira.<resource>.<operation>` — `ls` the apiDir
   // for resources, then read the operation file's *Args interface.
+  //
+  // The advertised import points at `index.ts` (what the generator
+  // actually writes), not `index.js`. tsx normally rewrites .js → .ts,
+  // but its resolver skips that rewrite for paths under
+  // /node_modules/ when invoked inside a TS project. Since the apiDir
+  // typically lives under ~/.npm/_npx/.../node_modules/jira-mcp/...,
+  // advertising .js made the import fail from any cwd with a
+  // tsconfig.json. Pointing at .ts directly avoids the heuristic.
   const usage = [
     `# tsx required. JIRA_MCP_SOCKET prefix is load-bearing — child`,
     `# shells don't inherit the MCP server's env.`,
     `JIRA_MCP_SOCKET=${ctx.socketAddress} npx tsx -e '`,
-    `import * as jira from "${ctx.apiDir}/index.js";`,
+    `import * as jira from "${ctx.apiDir}/index.ts";`,
     `import { readFile } from "fs/promises";`,
     `(async () => {`,
     `  const r = await jira.issue.get({ issueIdOrKey: "PROJ-1" });`,
@@ -86,7 +94,7 @@ export function buildCodeApiToolResponse(
 
   return {
     apiDir: ctx.apiDir,
-    rootIndex: `${ctx.apiDir}/index.js`,
+    rootIndex: `${ctx.apiDir}/index.ts`,
     socketEnv: "JIRA_MCP_SOCKET",
     socketAddress: ctx.socketAddress,
     usage,
