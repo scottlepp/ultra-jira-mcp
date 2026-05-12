@@ -2,7 +2,7 @@
 //
 // All socket handling, wire format, connection lifecycle, and the
 // invoke→sandbox dispatch loop live in
-// `@scottlepp/mcp-toolkit/bridge`. This module:
+// `@scottlepper/mcp-toolkit/bridge`. This module:
 //
 //   1. Pins the address to a `jmcp-<hash>.sock` filename under
 //      ${TMPDIR} when the session-cache path is too long for
@@ -23,15 +23,9 @@ import {
   defaultBridgeAddress as toolkitDefaultBridgeAddress,
   type BridgeAddress,
   type BridgeServer,
-} from "@scottlepp/mcp-toolkit/bridge";
-import type { ExecuteFn } from "@scottlepp/mcp-toolkit/manifest";
-
+} from "@scottlepper/mcp-toolkit/bridge";
 import type { JiraClient } from "../auth/jira-client.js";
-import {
-  assertOperationEnabled,
-  executeJiraOp,
-  type Manifest,
-} from "../core/manifest.js";
+import { makeJiraExecutor, type Manifest } from "../core/manifest.js";
 import { jiraSandbox } from "../core/sandbox.js";
 import { trimRegistry } from "../core/trim-registry.js";
 import type { SandboxResult } from "../types/refs.js";
@@ -48,17 +42,6 @@ export function defaultBridgeAddress(): BridgeAddress {
     sessionCacheDir: jiraSandbox.sessionCacheDir(),
     socketPrefix: "jmcp",
   });
-}
-
-// Closure that runs the disabled check with the Jira-specific message
-// before delegating to the agile-aware executor. Replaces the toolkit's
-// default `assertOperationEnabled` step, which would otherwise throw a
-// message that doesn't name JIRA_DISABLED_ACTIONS.
-function makeJiraExecutor(disabledActions?: readonly string[]): ExecuteFn {
-  return async (ctx) => {
-    assertOperationEnabled(ctx.op.name, disabledActions);
-    return executeJiraOp(ctx);
-  };
 }
 
 export interface StartBridgeOpts {

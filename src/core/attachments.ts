@@ -28,7 +28,7 @@ import {
   sanitizeFilename,
   type DownloadTransport,
   type SingleConsumptionResponse,
-} from "@scottlepp/mcp-toolkit/streaming";
+} from "@scottlepper/mcp-toolkit/streaming";
 
 import { jiraSandbox } from "./sandbox.js";
 

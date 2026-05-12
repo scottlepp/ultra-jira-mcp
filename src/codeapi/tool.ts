@@ -10,17 +10,17 @@
 // `issue.get` example and the subtasks JQL gotcha) that historically
 // saved first-use sessions multiple wasted calls.
 
-import { createCodeApiTool } from "@scottlepp/mcp-toolkit/code-api";
+import { createCodeApiTool } from "@scottlepper/mcp-toolkit/code-api";
 
 export type {
   CodeApiToolContext,
   CodeApiToolResponse,
-} from "@scottlepp/mcp-toolkit/code-api";
+} from "@scottlepper/mcp-toolkit/code-api";
 
 import type {
   CodeApiToolContext,
   CodeApiToolResponse,
-} from "@scottlepp/mcp-toolkit/code-api";
+} from "@scottlepper/mcp-toolkit/code-api";
 
 export const JIRA_CODE_API_TOOL_NAME = "jira_code_api";
 

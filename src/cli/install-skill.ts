@@ -17,7 +17,7 @@
 import {
   installSkill as toolkitInstallSkill,
   type InstallSkillResult,
-} from "@scottlepp/mcp-toolkit/cli";
+} from "@scottlepper/mcp-toolkit/cli";
 
 // SKILL.md body. The trigger description is deliberately conservative:
 // "explicit mention of Jira / JQL / ticket lookup" rather than "any

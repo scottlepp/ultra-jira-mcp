@@ -2,7 +2,7 @@
 //
 // All generic manifest plumbing (Operation type, splitArgs,
 // interpolatePath, findOperation, query-param coercion, rawString body
-// handling, executor hook) lives in `@scottlepp/mcp-toolkit/manifest`.
+// handling, executor hook) lives in `@scottlepper/mcp-toolkit/manifest`.
 // This module:
 //
 //   1. Extends `Operation` with `isAgile?: boolean` so existing entries
@@ -21,7 +21,7 @@ import {
   type Operation as ToolkitOperation,
   invokeOperation as toolkitInvokeOperation,
   invokeOperationRaw as toolkitInvokeOperationRaw,
-} from "@scottlepp/mcp-toolkit/manifest";
+} from "@scottlepper/mcp-toolkit/manifest";
 
 import type { JiraClient } from "../auth/jira-client.js";
 import { trimRegistry, type TrimKey } from "./trim-registry.js";
@@ -35,9 +35,9 @@ export {
   splitArgs,
   findOperation,
   defaultExecute,
-} from "@scottlepp/mcp-toolkit/manifest";
+} from "@scottlepper/mcp-toolkit/manifest";
 
-import { OperationError } from "@scottlepp/mcp-toolkit/manifest";
+import { OperationError } from "@scottlepper/mcp-toolkit/manifest";
 
 // Override the toolkit's generic "Operation X is disabled." message
 // with one that names the env var the user needs to edit. The bridge
@@ -65,7 +65,7 @@ export type {
   ExecuteContext,
   ExecuteFn,
   InvokeOptions,
-} from "@scottlepp/mcp-toolkit/manifest";
+} from "@scottlepper/mcp-toolkit/manifest";
 
 // --- Jira extensions --------------------------------------------------
 
@@ -80,6 +80,26 @@ export interface Operation extends Omit<ToolkitOperation, "trim"> {
 }
 
 export type Manifest = readonly Operation[];
+
+// Factory for an executor closure that runs the
+// JIRA_DISABLED_ACTIONS-aware disabled check before delegating to
+// `executeJiraOp`. Both the bridge and the consolidated-tool
+// dispatcher use this with the toolkit's generic dispatch, which
+// otherwise would throw a generic "Operation X is disabled." message
+// that doesn't name the env var users need to edit.
+//
+// `disabledActions` is captured in the closure and checked at the
+// top of every dispatched op — the toolkit's own check is bypassed
+// by callers passing `undefined` for the toolkit's `disabledActions`
+// option.
+export function makeJiraExecutor(
+  disabledActions?: readonly string[],
+): ExecuteFn {
+  return async (ctx) => {
+    assertOperationEnabled(ctx.op.name, disabledActions);
+    return executeJiraOp(ctx);
+  };
+}
 
 // Routes a fully-resolved operation call to the right JiraClient method.
 // Inspects `op.isAgile` to pick between `client.agile*` and `client.*`.

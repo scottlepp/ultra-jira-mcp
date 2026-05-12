@@ -276,7 +276,7 @@ export {
   bareListSummary,
   type ListSummary,
   type BareListSummary,
-} from "@scottlepp/mcp-toolkit/trim";
+} from "@scottlepper/mcp-toolkit/trim";
 
 // /issue/{key}/watchers returns { watchers, watchCount }, not a
 // PageBean. Trim down to count + isWatching from the perspective of

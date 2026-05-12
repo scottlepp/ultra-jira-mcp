@@ -4,4 +4,4 @@
 export {
   TtlLruCache,
   type TtlCacheOptions,
-} from "@scottlepp/mcp-toolkit/lru";
+} from "@scottlepper/mcp-toolkit/lru";
