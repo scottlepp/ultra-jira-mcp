@@ -1,7 +1,8 @@
 # ultra-jira-mcp — agent guide
 
 Token-efficient MCP server **and** CLI for Jira Cloud (published as
-`ultra-jira-mcp` on npm; binaries are still `jira-mcp` and `jira-cli`).
+`ultra-jira-mcp` on npm; the server bin is `ultra-jira-mcp` —
+`jira-mcp` remains as an alias — and the CLI bin is `jira-cli`).
 Built on `@scottlepper/mcp-toolkit` — generic MCP plumbing lives in the
 toolkit; this repo owns Jira-specific code only.
 
