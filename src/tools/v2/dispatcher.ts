@@ -133,7 +133,7 @@ export function buildInputSchema(tool: ConsolidatedTool): unknown {
     tool.description,
     "Actions:",
     ...perActionLines,
-    "Pass `full: true` to bypass the summary projection and return the raw Jira API response. Useful when the default summary drops content you need.",
+    "Pass `full: true` on read (GET) actions to bypass the summary projection and return the raw Jira API response. Useful when the default summary drops content you need. Mutation actions reject `full: true` — their responses are already minimal.",
   ].join("\n");
 
   // Spread `merged` first so a (defensively-skipped) collision can

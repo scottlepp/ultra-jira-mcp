@@ -185,7 +185,7 @@ export async function downloadAttachment(
     // toolkit's message already includes the HTTP code and body
     // prefix — we just want the attachment id + filename out front.
     const msg = err instanceof Error ? err.message : String(err);
-    const httpMatch = /HTTP (\d+) (.*)$/.exec(msg);
+    const httpMatch = /HTTP (\d+) ([\s\S]*)$/.exec(msg);
     if (httpMatch) {
       throw new Error(
         `Failed to download attachment ${input.id} (${filename}): HTTP ${httpMatch[1]} ${httpMatch[2]}`,
